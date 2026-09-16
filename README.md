@@ -1,0 +1,2 @@
+# StockSight
+StockSight Financial Dashboard

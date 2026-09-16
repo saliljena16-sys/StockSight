@@ -6,9 +6,10 @@ import WealthProjectionChart from './WealthProjectionChart';
 interface FinancialForecasterProps {
   cagr: number;
   ticker: string;
+  isLiveData?: boolean;
 }
 
-export default function FinancialForecaster({ cagr, ticker }: FinancialForecasterProps) {
+export default function FinancialForecaster({ cagr, ticker, isLiveData = false }: FinancialForecasterProps) {
   const [currentInvestment, setCurrentInvestment] = useState(10000);
   const [monthlyContribution, setMonthlyContribution] = useState(500);
   const [targetAmount, setTargetAmount] = useState(1000000);
@@ -115,15 +116,30 @@ export default function FinancialForecaster({ cagr, ticker }: FinancialForecaste
         monthsToTarget={projection.monthsToTarget}
       />
 
-      {/* Disclaimer */}
-      <div className="mt-4 flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-        <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-amber-200/80 leading-relaxed">
-          <strong className="text-amber-300">Disclaimer:</strong> This is a mathematical projection based on {ticker}'s historical 
-          Compound Annual Growth Rate (CAGR) of {formatPercent(cagr)}. Past performance does not guarantee future results. 
-          This is not financial advice. Actual returns may vary significantly. Always consult a qualified financial advisor 
-          before making investment decisions.
-        </p>
+      {/* Data source indicator */}
+      <div className={`mt-4 flex items-start gap-2 p-3 rounded-lg border ${
+        isLiveData 
+          ? 'bg-emerald-500/5 border-emerald-500/20' 
+          : 'bg-amber-500/5 border-amber-500/20'
+      }`}>
+        <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isLiveData ? 'text-emerald-400' : 'text-amber-400'}`} />
+        <div className={`text-xs leading-relaxed ${isLiveData ? 'text-emerald-200/80' : 'text-amber-200/80'}`}>
+          <p className={`font-semibold mb-1 ${isLiveData ? 'text-emerald-300' : 'text-amber-300'}`}>
+            {isLiveData 
+              ? `Based on ${ticker}'s Real Historical Data`
+              : `Based on ${ticker}'s Simulated Data`
+            }
+          </p>
+          <p>
+            {isLiveData 
+              ? `CAGR of ${formatPercent(cagr)} calculated from actual Yahoo Finance historical prices. `
+              : `CAGR of ${formatPercent(cagr)} based on simulated historical data. `
+            }
+            <strong>Disclaimer:</strong> Past performance does not guarantee future results. 
+            This is not financial advice. Actual returns may vary significantly. Always consult a qualified financial advisor 
+            before making investment decisions.
+          </p>
+        </div>
       </div>
     </div>
   );

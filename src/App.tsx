@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import useSWR from 'swr';
 import { 
   BarChart3, Plus, RefreshCw, Activity, 
-  TrendingUp, Clock, Zap, Eye, EyeOff
+  TrendingUp, Clock, Zap, EyeOff, Wifi, WifiOff, Loader2
 } from 'lucide-react';
 import { getStockInfo, simulatePriceUpdate, STARTER_STOCKS, StockInfo } from './utils/mockData';
 import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
@@ -12,13 +12,9 @@ import AnalysisPanel from './components/AnalysisPanel';
 import FinancialForecaster from './components/FinancialForecaster';
 import AddStockModal from './components/AddStockModal';
 
-// SWR fetcher for mock data (simulates API call with slight delay)
-const fetcher = (ticker: string): Promise<StockInfo> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(getStockInfo(ticker));
-    }, 100);
-  });
+// SWR fetcher - fetches real stock data from Yahoo Finance API
+const fetcher = async (ticker: string): Promise<StockInfo> => {
+  return getStockInfo(ticker);
 };
 
 export default function App() {
@@ -27,21 +23,28 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<'chart' | 'analysis' | 'forecast'>('chart');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Fetch data for all tracked stocks using SWR with 60-second refresh
-  const { data: stocksData, mutate } = useSWR(
+  const { data: stocksData, isLoading, mutate } = useSWR(
     tickers.length > 0 ? tickers : null,
     async (keys: string[]) => {
       const results = await Promise.all(keys.map(k => fetcher(k)));
+      setLastUpdate(new Date());
       return results;
     },
     {
-      refreshInterval: 60000, // Refresh every 60 seconds
-      revalidateOnFocus: false,
+      refreshInterval: 60000, // Refresh every 60 seconds for live data
+      revalidateOnFocus: true,
+      revalidateIfStale: true,
     }
   );
 
-  // Simulate live price updates every 5 seconds
+  // Check if we have live data
+  const hasLiveData = stocksData?.some(s => s.isLiveData) ?? false;
+  const allLiveData = stocksData?.every(s => s.isLiveData) ?? false;
+
+  // Simulate live price updates every 5 seconds (small movements between API refreshes)
   useEffect(() => {
     const interval = setInterval(() => {
       if (stocksData) {
@@ -49,7 +52,6 @@ export default function App() {
           stocksData.map(stock => simulatePriceUpdate(stock)),
           { revalidate: false }
         );
-        setLastUpdate(new Date());
       }
     }, 5000);
 
@@ -57,9 +59,10 @@ export default function App() {
   }, [stocksData, mutate]);
 
   const addStock = useCallback((ticker: string) => {
-    if (!tickers.includes(ticker.toUpperCase())) {
-      setTickers(prev => [...prev, ticker.toUpperCase()]);
-      setSelectedTicker(ticker.toUpperCase());
+    const upper = ticker.toUpperCase();
+    if (!tickers.includes(upper)) {
+      setTickers(prev => [...prev, upper]);
+      setSelectedTicker(upper);
     }
   }, [tickers]);
 
@@ -72,6 +75,12 @@ export default function App() {
       return next;
     });
   }, [selectedTicker]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await mutate();
+    setIsRefreshing(false);
+  };
 
   // Get selected stock data and analysis
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
@@ -90,27 +99,48 @@ export default function App() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-white tracking-tight">StockSight</h1>
-                <p className="text-xs text-slate-500">Algorithmic Stock Analysis</p>
+                <p className="text-xs text-slate-500">Real-Time Algorithmic Analysis</p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
+              {/* Data source indicator */}
+              <div className="hidden sm:flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border bg-slate-800/50">
+                {hasLiveData ? (
+                  <>
+                    <Wifi className="w-3 h-3 text-emerald-400" />
+                    <span className={allLiveData ? 'text-emerald-400' : 'text-amber-400'}>
+                      {allLiveData ? 'Live Market Data' : 'Partial Live Data'}
+                    </span>
+                  </>
+                ) : isLoading ? (
+                  <>
+                    <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
+                    <span className="text-blue-400">Fetching...</span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-3 h-3 text-slate-500" />
+                    <span className="text-slate-500">Demo Mode</span>
+                  </>
+                )}
+              </div>
+              
               {/* Live indicator */}
-              <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+              <div className="hidden md:flex items-center gap-2 text-xs text-slate-400">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span>Live</span>
-                <span className="text-slate-600">•</span>
                 <Clock className="w-3 h-3" />
                 <span>{lastUpdate.toLocaleTimeString()}</span>
               </div>
               
               {/* Refresh button */}
               <button
-                onClick={() => mutate()}
-                className="p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors"
-                title="Refresh data"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-50"
+                title="Refresh data from Yahoo Finance"
               >
-                <RefreshCw className="w-4 h-4 text-slate-400" />
+                <RefreshCw className={`w-4 h-4 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
               
               {/* Add stock button */}
@@ -128,41 +158,60 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {/* Loading State */}
+        {isLoading && !stocksData && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="w-12 h-12 text-emerald-400 animate-spin mb-4" />
+            <h2 className="text-lg font-semibold text-white mb-2">Fetching Live Market Data</h2>
+            <p className="text-slate-400 text-sm">Connecting to Yahoo Finance API...</p>
+            <p className="text-slate-500 text-xs mt-2">Loading {STARTER_STOCKS.join(', ')} and more</p>
+          </div>
+        )}
+
         {/* Stock Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-          {stocksData?.map((stock) => {
-            const stockAnalysis = analyzeStock(stock.data);
-            return (
-              <div key={stock.ticker} className="relative group">
-                <StockCard
-                  stock={stock}
-                  analysis={stockAnalysis}
-                  isSelected={stock.ticker === selectedTicker}
-                  onClick={() => setSelectedTicker(stock.ticker)}
-                />
-                {/* Remove button */}
-                {tickers.length > 1 && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeStock(stock.ticker); }}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-slate-700/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400"
-                    title="Remove stock"
-                  >
-                    <EyeOff className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          
-          {/* Add stock card */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="p-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/30 transition-all flex flex-col items-center justify-center gap-2 min-h-[120px]"
-          >
-            <Plus className="w-6 h-6 text-slate-500" />
-            <span className="text-sm text-slate-500">Add Stock</span>
-          </button>
-        </div>
+        {stocksData && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+            {stocksData.map((stock) => {
+              const stockAnalysis = analyzeStock(stock.data);
+              return (
+                <div key={stock.ticker} className="relative group">
+                  <StockCard
+                    stock={stock}
+                    analysis={stockAnalysis}
+                    isSelected={stock.ticker === selectedTicker}
+                    onClick={() => setSelectedTicker(stock.ticker)}
+                  />
+                  {/* Live badge */}
+                  {stock.isLiveData && (
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                      <span className="text-[10px] text-emerald-400 font-medium">LIVE</span>
+                    </div>
+                  )}
+                  {/* Remove button */}
+                  {tickers.length > 1 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); removeStock(stock.ticker); }}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-slate-700/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400"
+                      title="Remove stock"
+                    >
+                      <EyeOff className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            
+            {/* Add stock card */}
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="p-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/30 transition-all flex flex-col items-center justify-center gap-2 min-h-[120px]"
+            >
+              <Plus className="w-6 h-6 text-slate-500" />
+              <span className="text-sm text-slate-500">Add Stock</span>
+            </button>
+          </div>
+        )}
 
         {/* Tab Navigation */}
         {selectedStock && analysis && (
@@ -203,8 +252,19 @@ export default function App() {
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>
-                      <h2 className="text-lg font-bold text-white">{selectedStock.ticker} — {selectedStock.name}</h2>
-                      <p className="text-xs text-slate-400">{selectedStock.sector} • 1 Year Price Action</p>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold text-white">{selectedStock.ticker} — {selectedStock.name}</h2>
+                        {selectedStock.isLiveData && (
+                          <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400 font-medium">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {selectedStock.sector} • 1 Year Price Action 
+                        {selectedStock.isLiveData && ` • Last updated: ${new Date(selectedStock.lastUpdated).toLocaleTimeString()}`}
+                      </p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-white">${selectedStock.currentPrice.toFixed(2)}</p>
@@ -226,14 +286,14 @@ export default function App() {
               )}
 
               {activeTab === 'forecast' && (
-                <FinancialForecaster cagr={cagr} ticker={selectedStock.ticker} />
+                <FinancialForecaster cagr={cagr} ticker={selectedStock.ticker} isLiveData={selectedStock.isLiveData} />
               )}
             </div>
           </>
         )}
 
         {/* Empty State */}
-        {!selectedStock && (
+        {!isLoading && !selectedStock && stocksData && stocksData.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20">
             <BarChart3 className="w-16 h-16 text-slate-700 mb-4" />
             <h2 className="text-xl font-bold text-slate-400 mb-2">No stocks selected</h2>
@@ -254,11 +314,16 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
-              StockSight — Algorithmic analysis for educational purposes only. Not financial advice.
+              StockSight — Real-time data from Yahoo Finance. For educational purposes only. Not financial advice.
             </p>
-            <p className="text-xs text-slate-600">
-              Data refreshes every 60s • Prices simulated for demo
-            </p>
+            <div className="flex items-center gap-3 text-xs text-slate-600">
+              <span className="flex items-center gap-1">
+                <Wifi className="w-3 h-3" />
+                Live prices refresh every 60s
+              </span>
+              <span>•</span>
+              <span>Source: Yahoo Finance API</span>
+            </div>
           </div>
         </div>
       </footer>

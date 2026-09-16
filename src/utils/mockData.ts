@@ -1,6 +1,5 @@
 // Real Stock Data Service for StockSight
-// Fetches live data from Yahoo Finance API via CORS proxy
-// Falls back to mock data if API is unavailable
+// Uses multiple API sources with intelligent fallback
 
 export interface StockDataPoint {
   date: string;
@@ -17,54 +16,80 @@ export interface StockInfo {
   sector: string;
   currentPrice: number;
   previousClose: number;
-  data: StockDataPoint[];
+  historicalData: StockDataPoint[];
   lastUpdated: string;
   isLiveData: boolean;
+  dataSource: string;
 }
 
-// CORS proxies to try (in order of preference)
-const CORS_PROXIES = [
-  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
+// ============================================
+// API SOURCES (in order of preference)
+// ============================================
 
-// Yahoo Finance API endpoints
-function getYahooChartUrl(symbol: string, range: string = '1y', interval: string = '1d'): string {
-  return `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}&includePrePost=false`;
+// Source 1: Alpha Vantage (Free tier, CORS-enabled)
+const ALPHA_VANTAGE_KEY = 'demo';
+async function fetchFromAlphaVantage(symbol: string): Promise<StockDataPoint[] | null> {
+  try {
+    const url = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}&outputsize=full`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    
+    const json = await response.json();
+    const timeSeries = json['Time Series (Daily)'];
+    if (!timeSeries) return null;
+    
+    const result: StockDataPoint[] = [];
+    const dates = Object.keys(timeSeries).sort().reverse().slice(0, 365);
+    
+    for (const date of dates) {
+      const dayData = timeSeries[date];
+      result.push({
+        date,
+        open: parseFloat(dayData['1. open']),
+        high: parseFloat(dayData['2. high']),
+        low: parseFloat(dayData['3. low']),
+        close: parseFloat(dayData['4. close']),
+        volume: parseInt(dayData['5. volume']),
+      });
+    }
+    
+    return result.length > 50 ? result.reverse() : null;
+  } catch (e) {
+    console.warn('Alpha Vantage failed:', e);
+    return null;
+  }
 }
 
-function getYahooQuoteUrl(symbols: string[]): string {
-  return `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols.join(',')}`;
-}
-
-// Fetch real historical data from Yahoo Finance
-async function fetchYahooChartData(symbol: string): Promise<StockDataPoint[] | null> {
-  for (const proxyFn of CORS_PROXIES) {
+// Source 2: Yahoo Finance via CORS proxy
+async function fetchFromYahooFinance(symbol: string): Promise<StockDataPoint[] | null> {
+  const proxies = [
+    (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  ];
+  
+  const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`;
+  
+  for (const proxyFn of proxies) {
     try {
-      const url = proxyFn(getYahooChartUrl(symbol, '1y', '1d'));
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
+      const url = proxyFn(yahooUrl);
+      const response = await fetch(url, { 
+        signal: AbortSignal.timeout(5000)
       });
       
       if (!response.ok) continue;
       
       const json = await response.json();
-      
-      // Parse Yahoo Finance chart response
       const result = json?.chart?.result?.[0];
-      if (!result) continue;
+      if (!result?.timestamp) continue;
       
-      const timestamps: number[] = result.timestamp || [];
+      const timestamps: number[] = result.timestamp;
       const quote = result.indicators?.quote?.[0];
-      if (!quote || !timestamps.length) continue;
+      if (!quote) continue;
       
       const { open, high, low, close, volume } = quote;
       const data: StockDataPoint[] = [];
       
       for (let i = 0; i < timestamps.length; i++) {
-        // Skip null values (market holidays, etc.)
         if (open[i] == null || close[i] == null) continue;
         
         const date = new Date(timestamps[i] * 1000);
@@ -78,9 +103,9 @@ async function fetchYahooChartData(symbol: string): Promise<StockDataPoint[] | n
         });
       }
       
-      if (data.length > 0) return data;
+      if (data.length > 50) return data;
     } catch (e) {
-      console.warn(`CORS proxy failed for ${symbol}, trying next...`, e);
+      console.warn(`Yahoo proxy failed, trying next...`);
       continue;
     }
   }
@@ -88,36 +113,85 @@ async function fetchYahooChartData(symbol: string): Promise<StockDataPoint[] | n
   return null;
 }
 
-// Fetch real-time quote from Yahoo Finance
-async function fetchYahooQuote(symbol: string): Promise<{ price: number; previousClose: number; name: string } | null> {
-  for (const proxyFn of CORS_PROXIES) {
-    try {
-      const url = proxyFn(getYahooQuoteUrl([symbol]));
-      const response = await fetch(url);
-      
-      if (!response.ok) continue;
-      
-      const json = await response.json();
-      const quote = json?.quoteResponse?.result?.[0];
-      
-      if (!quote) continue;
-      
-      return {
-        price: quote.regularMarketPrice || quote.postMarketPrice || 0,
-        previousClose: quote.regularMarketPreviousClose || 0,
-        name: quote.longName || quote.shortName || symbol,
-      };
-    } catch (e) {
-      console.warn(`Quote fetch failed for ${symbol}, trying next proxy...`, e);
-      continue;
+// Source 3: Finnhub (Free tier, supports CORS)
+const FINNHUB_KEY = 'demo';
+async function fetchFromFinnhub(symbol: string): Promise<StockDataPoint[] | null> {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const oneYearAgo = now - (365 * 24 * 60 * 60);
+    
+    const url = `https://finnhub.io/api/v1/stock/candle?symbol=${symbol}&resolution=D&from=${oneYearAgo}&to=${now}&token=${FINNHUB_KEY}`;
+    const response = await fetch(url);
+    
+    if (!response.ok) return null;
+    
+    const json = await response.json();
+    if (json.s !== 'ok' || !json.c) return null;
+    
+    const data: StockDataPoint[] = [];
+    for (let i = 0; i < json.t.length; i++) {
+      const date = new Date(json.t[i] * 1000);
+      data.push({
+        date: date.toISOString().split('T')[0],
+        open: json.o[i],
+        high: json.h[i],
+        low: json.l[i],
+        close: json.c[i],
+        volume: json.v[i] || 0,
+      });
     }
+    
+    return data.length > 50 ? data : null;
+  } catch (e) {
+    console.warn('Finnhub failed:', e);
+    return null;
+  }
+}
+
+// Get real-time quote
+async function fetchRealtimeQuote(symbol: string): Promise<{ price: number; previousClose: number; name: string } | null> {
+  // Try Alpha Vantage
+  try {
+    const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const json = await response.json();
+      const quote = json['Global Quote'];
+      if (quote && quote['05. price']) {
+        return {
+          price: parseFloat(quote['05. price']),
+          previousClose: parseFloat(quote['08. previous close']),
+          name: symbol,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Alpha Vantage quote failed');
+  }
+  
+  // Try Finnhub
+  try {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const json = await response.json();
+      if (json.c) {
+        return {
+          price: json.c,
+          previousClose: json.pc,
+          name: symbol,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Finnhub quote failed');
   }
   
   return null;
 }
 
 // ============================================
-// MOCK DATA FALLBACK (used when API is unavailable)
+// MOCK DATA FALLBACK
 // ============================================
 
 function seededRandom(seed: number): () => number {
@@ -134,7 +208,7 @@ function generateMockHistoricalData(
   trend: number,
   days: number = 365
 ): StockDataPoint[] {
-  const data: StockDataPoint[] = [];
+  const result: StockDataPoint[] = [];
   const random = seededRandom(basePrice * 1000 + days);
   let price = basePrice * 0.7;
 
@@ -155,7 +229,7 @@ function generateMockHistoricalData(
     const low = Math.min(open, close) * (1 - random() * dayVolatility * 0.5);
     const volume = Math.floor(20000000 + random() * 80000000);
 
-    data.push({
+    result.push({
       date: date.toISOString().split('T')[0],
       open: Math.round(open * 100) / 100,
       high: Math.round(high * 100) / 100,
@@ -165,7 +239,7 @@ function generateMockHistoricalData(
     });
   }
 
-  return data;
+  return result;
 }
 
 const STOCK_CONFIGS: Record<string, { name: string; sector: string; basePrice: number; volatility: number; trend: number }> = {
@@ -177,8 +251,6 @@ const STOCK_CONFIGS: Record<string, { name: string; sector: string; basePrice: n
   TSLA: { name: 'Tesla Inc.', sector: 'Automotive', basePrice: 245, volatility: 0.04, trend: 0.10 },
   META: { name: 'Meta Platforms Inc.', sector: 'Technology', basePrice: 510, volatility: 0.028, trend: 0.25 },
   JPM: { name: 'JPMorgan Chase & Co.', sector: 'Financial Services', basePrice: 198, volatility: 0.015, trend: 0.10 },
-  AMD: { name: 'Advanced Micro Devices', sector: 'Technology', basePrice: 165, volatility: 0.032, trend: 0.20 },
-  NFLX: { name: 'Netflix Inc.', sector: 'Communication Services', basePrice: 680, volatility: 0.025, trend: 0.22 },
 };
 
 // ============================================
@@ -188,34 +260,39 @@ const STOCK_CONFIGS: Record<string, { name: string; sector: string; basePrice: n
 export async function getStockInfo(ticker: string): Promise<StockInfo> {
   const upperTicker = ticker.toUpperCase();
   
-  // Try to fetch real data
-  try {
-    const [chartData, quote] = await Promise.all([
-      fetchYahooChartData(upperTicker),
-      fetchYahooQuote(upperTicker),
-    ]);
+  const [alphaVantageData, yahooData, finnhubData, quote] = await Promise.all([
+    fetchFromAlphaVantage(upperTicker),
+    fetchFromYahooFinance(upperTicker),
+    fetchFromFinnhub(upperTicker),
+    fetchRealtimeQuote(upperTicker),
+  ]);
+  
+  const chartData = alphaVantageData || yahooData || finnhubData;
+  
+  if (chartData && chartData.length > 50) {
+    const currentPrice = quote?.price || chartData[chartData.length - 1].close;
+    const previousClose = quote?.previousClose || chartData[chartData.length - 2].close;
+    const name = quote?.name || STOCK_CONFIGS[upperTicker]?.name || `${upperTicker} Corp.`;
     
-    if (chartData && chartData.length > 50) {
-      const currentPrice = quote?.price || chartData[chartData.length - 1].close;
-      const previousClose = quote?.previousClose || chartData[chartData.length - 2].close;
-      const name = quote?.name || STOCK_CONFIGS[upperTicker]?.name || `${upperTicker} Corp.`;
-      
-      return {
-        ticker: upperTicker,
-        name,
-        sector: STOCK_CONFIGS[upperTicker]?.sector || 'Unknown',
-        currentPrice,
-        previousClose,
-        data: chartData,
-        lastUpdated: new Date().toISOString(),
-        isLiveData: true,
-      };
-    }
-  } catch (e) {
-    console.warn(`Failed to fetch live data for ${upperTicker}, using mock data`, e);
+    let dataSource = 'Unknown';
+    if (alphaVantageData) dataSource = 'Alpha Vantage';
+    else if (yahooData) dataSource = 'Yahoo Finance';
+    else if (finnhubData) dataSource = 'Finnhub';
+    
+    return {
+      ticker: upperTicker,
+      name,
+      sector: STOCK_CONFIGS[upperTicker]?.sector || 'Unknown',
+      currentPrice,
+      previousClose,
+      historicalData: chartData,
+      lastUpdated: new Date().toISOString(),
+      isLiveData: true,
+      dataSource,
+    };
   }
   
-  // Fallback to mock data
+  console.warn(`All API sources failed for ${upperTicker}, using mock data`);
   return getMockStockInfo(upperTicker);
 }
 
@@ -223,32 +300,33 @@ function getMockStockInfo(ticker: string): StockInfo {
   const config = STOCK_CONFIGS[ticker];
   
   if (config) {
-    const data = generateMockHistoricalData(config.basePrice, config.volatility, config.trend);
+    const historicalData = generateMockHistoricalData(config.basePrice, config.volatility, config.trend);
     return {
       ticker,
       name: config.name,
       sector: config.sector,
-      currentPrice: data[data.length - 1].close,
-      previousClose: data[data.length - 2].close,
-      data,
+      currentPrice: historicalData[historicalData.length - 1].close,
+      previousClose: historicalData[historicalData.length - 2].close,
+      historicalData,
       lastUpdated: new Date().toISOString(),
       isLiveData: false,
+      dataSource: 'Mock Data (API unavailable)',
     };
   }
   
-  // Unknown ticker - generate random
   const random = seededRandom(ticker.charCodeAt(0) * 100 + ticker.charCodeAt(1));
   const basePrice = 50 + random() * 400;
-  const data = generateMockHistoricalData(basePrice, 0.025, 0.10);
+  const historicalData = generateMockHistoricalData(basePrice, 0.025, 0.10);
   return {
     ticker,
     name: `${ticker} Corp.`,
     sector: 'Unknown',
-    currentPrice: data[data.length - 1].close,
-    previousClose: data[data.length - 2].close,
-    data,
+    currentPrice: historicalData[historicalData.length - 1].close,
+    previousClose: historicalData[historicalData.length - 2].close,
+    historicalData,
     lastUpdated: new Date().toISOString(),
     isLiveData: false,
+    dataSource: 'Mock Data (API unavailable)',
   };
 }
 
@@ -258,16 +336,13 @@ export function getAllAvailableTickers(): string[] {
   return Object.keys(STOCK_CONFIGS);
 }
 
-// Simulate small price movements for "live" feel between API refreshes
 export function simulatePriceUpdate(stock: StockInfo): StockInfo {
   if (stock.isLiveData) {
-    // For live data, just add tiny movements
     const change = (Math.random() - 0.5) * 0.001;
     const newPrice = Math.round(stock.currentPrice * (1 + change) * 100) / 100;
     return { ...stock, currentPrice: newPrice };
   }
   
-  // For mock data, simulate more movement
   const change = (Math.random() - 0.5) * 0.002;
   const newPrice = Math.round(stock.currentPrice * (1 + change) * 100) / 100;
   return { ...stock, currentPrice: newPrice };

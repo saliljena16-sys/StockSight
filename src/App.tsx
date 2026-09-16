@@ -84,8 +84,8 @@ export default function App() {
 
   // Get selected stock data and analysis
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
-  const analysis = selectedStock ? analyzeStock(selectedStock.data) : null;
-  const cagr = selectedStock ? calculateCAGR(selectedStock.data) : 0.10;
+  const analysis = selectedStock ? analyzeStock(selectedStock.historicalData) : null;
+  const cagr = selectedStock ? calculateCAGR(selectedStock.historicalData) : 0.10;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white">
@@ -112,16 +112,19 @@ export default function App() {
                     <span className={allLiveData ? 'text-emerald-400' : 'text-amber-400'}>
                       {allLiveData ? 'Live Market Data' : 'Partial Live Data'}
                     </span>
+                    {selectedStock && (
+                      <span className="text-slate-500">via {selectedStock.dataSource}</span>
+                    )}
                   </>
                 ) : isLoading ? (
                   <>
                     <Loader2 className="w-3 h-3 text-blue-400 animate-spin" />
-                    <span className="text-blue-400">Fetching...</span>
+                    <span className="text-blue-400">Fetching from APIs...</span>
                   </>
                 ) : (
                   <>
-                    <WifiOff className="w-3 h-3 text-slate-500" />
-                    <span className="text-slate-500">Demo Mode</span>
+                    <WifiOff className="w-3 h-3 text-amber-500" />
+                    <span className="text-amber-400">Demo Mode — APIs unavailable</span>
                   </>
                 )}
               </div>
@@ -172,7 +175,7 @@ export default function App() {
         {stocksData && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
             {stocksData.map((stock) => {
-              const stockAnalysis = analyzeStock(stock.data);
+              const stockAnalysis = analyzeStock(stock.historicalData);
               return (
                 <div key={stock.ticker} className="relative group">
                   <StockCard
@@ -182,10 +185,15 @@ export default function App() {
                     onClick={() => setSelectedTicker(stock.ticker)}
                   />
                   {/* Live badge */}
-                  {stock.isLiveData && (
+                  {stock.isLiveData ? (
                     <div className="absolute bottom-3 right-3 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
-                      <span className="text-[10px] text-emerald-400 font-medium">LIVE</span>
+                      <span className="text-[10px] text-emerald-400 font-medium">LIVE • {stock.dataSource}</span>
+                    </div>
+                  ) : (
+                    <div className="absolute bottom-3 right-3 flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400"></div>
+                      <span className="text-[10px] text-amber-400 font-medium">DEMO MODE</span>
                     </div>
                   )}
                   {/* Remove button */}
@@ -277,7 +285,7 @@ export default function App() {
                       </p>
                     </div>
                   </div>
-                  <CandlestickChart data={selectedStock.data} analysis={analysis} ticker={selectedStock.ticker} />
+                  <CandlestickChart data={selectedStock.historicalData} analysis={analysis} ticker={selectedStock.ticker} />
                 </div>
               )}
 
@@ -314,7 +322,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
-              StockSight — Real-time data from Yahoo Finance. For educational purposes only. Not financial advice.
+              StockSight — Real-time stock data from multiple sources (Alpha Vantage, Yahoo Finance, Finnhub). For educational purposes only. Not financial advice.
             </p>
             <div className="flex items-center gap-3 text-xs text-slate-600">
               <span className="flex items-center gap-1">
@@ -322,9 +330,17 @@ export default function App() {
                 Live prices refresh every 60s
               </span>
               <span>•</span>
-              <span>Source: Yahoo Finance API</span>
+              <span>3 API sources with fallback</span>
             </div>
           </div>
+          {!hasLiveData && stocksData && (
+            <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+              <p className="text-xs text-amber-300">
+                <strong>Note:</strong> Live data APIs are currently unavailable. Showing simulated data for demonstration. 
+                In production, this would fetch real-time prices from Alpha Vantage, Yahoo Finance, or Finnhub APIs.
+              </p>
+            </div>
+          )}
         </div>
       </footer>
 

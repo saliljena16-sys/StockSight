@@ -11,5 +11,14 @@ export default defineConfig({
     hmr: {
       port: 3000,
     },
+    watch: {
+      ignored: [
+        '**/AppData/**',
+        '**/node_modules/.cache/**',
+        '**/.git/**',
+        '**/dist/**',
+        '**/build/**',
+      ],
+    },
   },
 });

@@ -22,16 +22,10 @@ function getRecommendationColor(rec: string): string {
 
 function getRecommendationIcon(rec: string) {
   switch (rec) {
-    case 'STRONG BUY':
-    case 'BUY':
-      return <TrendingUp className="w-3.5 h-3.5" />;
-    case 'HOLD':
-      return <Minus className="w-3.5 h-3.5" />;
-    case 'SELL':
-    case 'STRONG SELL':
-      return <TrendingDown className="w-3.5 h-3.5" />;
-    default:
-      return null;
+    case 'STRONG BUY': case 'BUY': return <TrendingUp className="w-3.5 h-3.5" />;
+    case 'HOLD': return <Minus className="w-3.5 h-3.5" />;
+    case 'SELL': case 'STRONG SELL': return <TrendingDown className="w-3.5 h-3.5" />;
+    default: return null;
   }
 }
 
@@ -59,12 +53,9 @@ export default function StockCard({ stock, analysis, isSelected, onClick }: Stoc
           <span>{analysis.recommendation}</span>
         </div>
       </div>
-      
       <div className="flex items-end justify-between mt-3">
         <div>
-          <p className="text-white text-2xl font-bold">
-            ${stock.currentPrice.toFixed(2)}
-          </p>
+          <p className="text-white text-2xl font-bold">${stock.currentPrice.toFixed(2)}</p>
           <p className={`text-sm font-medium ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
             {isPositive ? '+' : ''}{priceChange.toFixed(2)} ({isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%)
           </p>

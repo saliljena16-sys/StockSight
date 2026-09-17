@@ -11,25 +11,5 @@ export default defineConfig({
     hmr: {
       port: 3000,
     },
-    watch: {
-      ignored: [
-        '**/node_modules/**',
-        '**/dist/**',
-        '**/.git/**',
-        '**/AppData/**',
-        '**/Application Data/**',
-        '**/Local Settings/**',
-        '**/Roaming/**',
-        '**/OneDrive/**',
-        '**/.vscode/**',
-        '**/.idea/**',
-        '**/Thumbs.db',
-        '**/.DS_Store',
-        '**/ehthumbs.db',
-        '**/desktop.ini',
-      ],
-      usePolling: false,
-      useFsEvents: false,
-    },
   },
 });

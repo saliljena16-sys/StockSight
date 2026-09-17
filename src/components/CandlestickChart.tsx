@@ -15,8 +15,6 @@ export default function CandlestickChart({ data, analysis, ticker }: Candlestick
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
-
-    // Clean up previous chart
     if (chartRef.current) {
       chartRef.current.remove();
       chartRef.current = null;
@@ -35,20 +33,14 @@ export default function CandlestickChart({ data, analysis, ticker }: Candlestick
         vertLine: { color: '#475569', width: 1, style: 2, labelBackgroundColor: '#475569' },
         horzLine: { color: '#475569', width: 1, style: 2, labelBackgroundColor: '#475569' },
       },
-      rightPriceScale: {
-        borderColor: '#1e293b',
-      },
-      timeScale: {
-        borderColor: '#1e293b',
-        timeVisible: false,
-      },
+      rightPriceScale: { borderColor: '#1e293b' },
+      timeScale: { borderColor: '#1e293b', timeVisible: false },
       width: chartContainerRef.current.clientWidth,
       height: 400,
     });
 
     chartRef.current = chart;
 
-    // Add candlestick series
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#22c55e',
       downColor: '#ef4444',
@@ -58,58 +50,45 @@ export default function CandlestickChart({ data, analysis, ticker }: Candlestick
       wickUpColor: '#22c55e',
     });
 
-    const candleData = data.map(d => ({
-      time: d.date as Time,
-      open: d.open,
-      high: d.high,
-      low: d.low,
-      close: d.close,
-    }));
+    candleSeries.setData(
+      data.map(d => ({
+        time: d.date as Time,
+        open: d.open,
+        high: d.high,
+        low: d.low,
+        close: d.close,
+      }))
+    );
 
-    candleSeries.setData(candleData);
-
-    // Add 50-day SMA line
     const sma50Series = chart.addSeries(LineSeries, {
       color: '#f59e0b',
       lineWidth: 2,
       priceLineVisible: false,
     });
+    sma50Series.setData(
+      data
+        .map((d, i) => ({ time: d.date as Time, value: analysis.sma50[i] }))
+        .filter(d => !isNaN(d.value))
+    );
 
-    const sma50Data = data
-      .map((d, i) => ({
-        time: d.date as Time,
-        value: analysis.sma50[i],
-      }))
-      .filter(d => !isNaN(d.value));
-
-    sma50Series.setData(sma50Data);
-
-    // Add 200-day SMA line
     const sma200Series = chart.addSeries(LineSeries, {
       color: '#8b5cf6',
       lineWidth: 2,
       priceLineVisible: false,
     });
+    sma200Series.setData(
+      data
+        .map((d, i) => ({ time: d.date as Time, value: analysis.sma200[i] }))
+        .filter(d => !isNaN(d.value))
+    );
 
-    const sma200Data = data
-      .map((d, i) => ({
-        time: d.date as Time,
-        value: analysis.sma200[i],
-      }))
-      .filter(d => !isNaN(d.value));
-
-    sma200Series.setData(sma200Data);
-
-    // Fit content
     chart.timeScale().fitContent();
 
-    // Handle resize
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
       }
     };
-
     window.addEventListener('resize', handleResize);
 
     return () => {

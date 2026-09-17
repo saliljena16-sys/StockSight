@@ -13,23 +13,15 @@ export default function FinancialForecaster({ cagr, ticker, isLiveData = false }
   const [currentInvestment, setCurrentInvestment] = useState(10000);
   const [monthlyContribution, setMonthlyContribution] = useState(500);
   const [targetAmount, setTargetAmount] = useState(1000000);
-
-  const projection = calculateProjection({
-    currentInvestment,
-    monthlyContribution,
-    targetAmount,
-    annualReturnRate: cagr,
-  });
+  const projection = calculateProjection({ currentInvestment, monthlyContribution, targetAmount, annualReturnRate: cagr });
 
   return (
     <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-6">
       <div className="flex items-center gap-2 mb-6">
         <Calculator className="w-5 h-5 text-emerald-400" />
         <h2 className="text-lg font-bold text-white">Time-to-Target Forecaster</h2>
-        <span className="text-xs text-slate-500 ml-auto">Using {ticker} historical CAGR: {formatPercent(cagr)}</span>
+        <span className="text-xs text-slate-500 ml-auto">CAGR: {formatPercent(cagr)}</span>
       </div>
-
-      {/* Input Fields */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div>
           <label className="text-xs text-slate-400 mb-1 block flex items-center gap-1">
@@ -41,7 +33,7 @@ export default function FinancialForecaster({ cagr, ticker, isLiveData = false }
               type="number"
               value={currentInvestment}
               onChange={(e) => setCurrentInvestment(Math.max(0, Number(e.target.value)))}
-              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
+              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
             />
           </div>
         </div>
@@ -55,7 +47,7 @@ export default function FinancialForecaster({ cagr, ticker, isLiveData = false }
               type="number"
               value={monthlyContribution}
               onChange={(e) => setMonthlyContribution(Math.max(0, Number(e.target.value)))}
-              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
+              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
             />
           </div>
         </div>
@@ -69,29 +61,22 @@ export default function FinancialForecaster({ cagr, ticker, isLiveData = false }
               type="number"
               value={targetAmount}
               onChange={(e) => setTargetAmount(Math.max(0, Number(e.target.value)))}
-              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
+              className="w-full bg-slate-900/80 border border-slate-600 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500"
             />
           </div>
         </div>
       </div>
-
-      {/* Results Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
           <p className="text-xs text-slate-500 mb-1">Time to Target</p>
           <p className="text-lg font-bold text-white">
-            {projection.yearsToTarget !== null 
-              ? `${projection.yearsToTarget} years` 
-              : '∞'}
+            {projection.yearsToTarget !== null ? projection.yearsToTarget + ' years' : 'Never'}
           </p>
-          {projection.monthsToTarget !== null && (
-            <p className="text-xs text-slate-400">{projection.monthsToTarget} months</p>
-          )}
         </div>
         <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
           <p className="text-xs text-slate-500 mb-1">Target Date</p>
           <p className="text-lg font-bold text-white">
-            {projection.targetDate 
+            {projection.targetDate
               ? projection.targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
               : 'N/A'}
           </p>
@@ -103,43 +88,21 @@ export default function FinancialForecaster({ cagr, ticker, isLiveData = false }
           </p>
         </div>
         <div className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/30">
-          <p className="text-xs text-slate-500 mb-1">Expected Return Rate</p>
+          <p className="text-xs text-slate-500 mb-1">Return Rate</p>
           <p className="text-lg font-bold text-emerald-400">{formatPercent(cagr)}</p>
-          <p className="text-xs text-slate-400">Annual (CAGR)</p>
         </div>
       </div>
-
-      {/* Chart */}
-      <WealthProjectionChart 
+      <WealthProjectionChart
         data={projection.projectionData}
         targetAmount={targetAmount}
         monthsToTarget={projection.monthsToTarget}
       />
-
-      {/* Data source indicator */}
-      <div className={`mt-4 flex items-start gap-2 p-3 rounded-lg border ${
-        isLiveData 
-          ? 'bg-emerald-500/5 border-emerald-500/20' 
-          : 'bg-amber-500/5 border-amber-500/20'
-      }`}>
-        <AlertTriangle className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isLiveData ? 'text-emerald-400' : 'text-amber-400'}`} />
-        <div className={`text-xs leading-relaxed ${isLiveData ? 'text-emerald-200/80' : 'text-amber-200/80'}`}>
-          <p className={`font-semibold mb-1 ${isLiveData ? 'text-emerald-300' : 'text-amber-300'}`}>
-            {isLiveData 
-              ? `Based on ${ticker}'s Real Historical Data`
-              : `Based on ${ticker}'s Simulated Data`
-            }
-          </p>
-          <p>
-            {isLiveData 
-              ? `CAGR of ${formatPercent(cagr)} calculated from actual Yahoo Finance historical prices. `
-              : `CAGR of ${formatPercent(cagr)} based on simulated historical data. `
-            }
-            <strong>Disclaimer:</strong> Past performance does not guarantee future results. 
-            This is not financial advice. Actual returns may vary significantly. Always consult a qualified financial advisor 
-            before making investment decisions.
-          </p>
-        </div>
+      <div className="mt-4 flex items-start gap-2 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
+        <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+        <p className="text-xs text-amber-200/80 leading-relaxed">
+          <strong className="text-amber-300">Disclaimer:</strong> This projection is based on {ticker}'s historical CAGR of{' '}
+          {formatPercent(cagr)}. Past performance does not guarantee future results. Not financial advice.
+        </p>
       </div>
     </div>
   );

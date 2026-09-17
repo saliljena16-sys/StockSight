@@ -1,9 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR from 'swr';
-import { 
-  BarChart3, Plus, RefreshCw, Activity, 
-  TrendingUp, Clock, Zap, EyeOff, Wifi, WifiOff, Loader2
-} from 'lucide-react';
 import { getStockInfo, simulatePriceUpdate, STARTER_STOCKS, StockInfo } from './utils/mockData';
 import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
 import StockCard from './components/StockCard';
@@ -11,8 +7,8 @@ import CandlestickChart from './components/CandlestickChart';
 import AnalysisPanel from './components/AnalysisPanel';
 import FinancialForecaster from './components/FinancialForecaster';
 import AddStockModal from './components/AddStockModal';
+import { BarChart3, Plus, RefreshCw, Activity, TrendingUp, Clock, Zap, EyeOff, Wifi, WifiOff, Loader2 } from 'lucide-react';
 
-// SWR fetcher - fetches real stock data from Yahoo Finance API
 const fetcher = async (ticker: string): Promise<StockInfo> => {
   return getStockInfo(ticker);
 };
@@ -25,7 +21,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'chart' | 'analysis' | 'forecast'>('chart');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Fetch data for all tracked stocks using SWR with 60-second refresh
   const { data: stocksData, isLoading, mutate } = useSWR(
     tickers.length > 0 ? tickers : null,
     async (keys: string[]) => {
@@ -34,17 +29,15 @@ export default function App() {
       return results;
     },
     {
-      refreshInterval: 60000, // Refresh every 60 seconds for live data
+      refreshInterval: 60000,
       revalidateOnFocus: true,
       revalidateIfStale: true,
     }
   );
 
-  // Check if we have live data
   const hasLiveData = stocksData?.some(s => s.isLiveData) ?? false;
   const allLiveData = stocksData?.every(s => s.isLiveData) ?? false;
 
-  // Simulate live price updates every 5 seconds (small movements between API refreshes)
   useEffect(() => {
     const interval = setInterval(() => {
       if (stocksData) {
@@ -58,15 +51,15 @@ export default function App() {
     return () => clearInterval(interval);
   }, [stocksData, mutate]);
 
-  const addStock = useCallback((ticker: string) => {
+  const addStock = (ticker: string) => {
     const upper = ticker.toUpperCase();
     if (!tickers.includes(upper)) {
       setTickers(prev => [...prev, upper]);
       setSelectedTicker(upper);
     }
-  }, [tickers]);
+  };
 
-  const removeStock = useCallback((ticker: string) => {
+  const removeStock = (ticker: string) => {
     setTickers(prev => {
       const next = prev.filter(t => t !== ticker);
       if (selectedTicker === ticker && next.length > 0) {
@@ -74,7 +67,7 @@ export default function App() {
       }
       return next;
     });
-  }, [selectedTicker]);
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -82,7 +75,6 @@ export default function App() {
     setIsRefreshing(false);
   };
 
-  // Get selected stock data and analysis
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
   const analysis = selectedStock ? analyzeStock(selectedStock.historicalData) : null;
   const cagr = selectedStock ? calculateCAGR(selectedStock.historicalData) : 0.10;
@@ -102,9 +94,8 @@ export default function App() {
                 <p className="text-xs text-slate-500">Real-Time Algorithmic Analysis</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-3">
-              {/* Data source indicator */}
               <div className="hidden sm:flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border bg-slate-800/50">
                 {hasLiveData ? (
                   <>
@@ -128,25 +119,22 @@ export default function App() {
                   </>
                 )}
               </div>
-              
-              {/* Live indicator */}
+
               <div className="hidden md:flex items-center gap-2 text-xs text-slate-400">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                 <Clock className="w-3 h-3" />
                 <span>{lastUpdate.toLocaleTimeString()}</span>
               </div>
-              
-              {/* Refresh button */}
+
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
                 className="p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition-colors disabled:opacity-50"
-                title="Refresh data from Yahoo Finance"
+                title="Refresh data"
               >
                 <RefreshCw className={`w-4 h-4 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
-              
-              {/* Add stock button */}
+
               <button
                 onClick={() => setShowAddModal(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-sm font-medium"
@@ -161,17 +149,14 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
-        {/* Loading State */}
         {isLoading && !stocksData && (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-12 h-12 text-emerald-400 animate-spin mb-4" />
             <h2 className="text-lg font-semibold text-white mb-2">Fetching Live Market Data</h2>
-            <p className="text-slate-400 text-sm">Connecting to Yahoo Finance API...</p>
-            <p className="text-slate-500 text-xs mt-2">Loading {STARTER_STOCKS.join(', ')} and more</p>
+            <p className="text-slate-400 text-sm">Connecting to APIs...</p>
           </div>
         )}
 
-        {/* Stock Cards Row */}
         {stocksData && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
             {stocksData.map((stock) => {
@@ -184,7 +169,6 @@ export default function App() {
                     isSelected={stock.ticker === selectedTicker}
                     onClick={() => setSelectedTicker(stock.ticker)}
                   />
-                  {/* Live badge */}
                   {stock.isLiveData ? (
                     <div className="absolute bottom-3 right-3 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
@@ -196,10 +180,12 @@ export default function App() {
                       <span className="text-[10px] text-amber-400 font-medium">DEMO MODE</span>
                     </div>
                   )}
-                  {/* Remove button */}
                   {tickers.length > 1 && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); removeStock(stock.ticker); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeStock(stock.ticker);
+                      }}
                       className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-slate-700/80 hover:bg-red-500/20 text-slate-400 hover:text-red-400"
                       title="Remove stock"
                     >
@@ -209,8 +195,7 @@ export default function App() {
                 </div>
               );
             })}
-            
-            {/* Add stock card */}
+
             <button
               onClick={() => setShowAddModal(true)}
               className="p-4 rounded-xl border-2 border-dashed border-slate-700 hover:border-emerald-500/50 hover:bg-slate-800/30 transition-all flex flex-col items-center justify-center gap-2 min-h-[120px]"
@@ -221,7 +206,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab Navigation */}
         {selectedStock && analysis && (
           <>
             <div className="flex items-center gap-1 mb-4 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50 w-fit">
@@ -254,14 +238,15 @@ export default function App() {
               </button>
             </div>
 
-            {/* Tab Content */}
             <div className="space-y-6">
               {activeTab === 'chart' && (
                 <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-4 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-bold text-white">{selectedStock.ticker} — {selectedStock.name}</h2>
+                        <h2 className="text-lg font-bold text-white">
+                          {selectedStock.ticker} — {selectedStock.name}
+                        </h2>
                         {selectedStock.isLiveData && (
                           <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] text-emerald-400 font-medium">
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></div>
@@ -270,22 +255,36 @@ export default function App() {
                         )}
                       </div>
                       <p className="text-xs text-slate-400">
-                        {selectedStock.sector} • 1 Year Price Action 
-                        {selectedStock.isLiveData && ` • Last updated: ${new Date(selectedStock.lastUpdated).toLocaleTimeString()}`}
+                        {selectedStock.sector} • 1 Year Price Action
+                        {selectedStock.isLiveData &&
+                          ` • Last updated: ${new Date(selectedStock.lastUpdated).toLocaleTimeString()}`}
                       </p>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-white">${selectedStock.currentPrice.toFixed(2)}</p>
-                      <p className={`text-sm font-medium ${
-                        selectedStock.currentPrice >= selectedStock.previousClose ? 'text-emerald-400' : 'text-red-400'
-                      }`}>
+                      <p
+                        className={`text-sm font-medium ${
+                          selectedStock.currentPrice >= selectedStock.previousClose
+                            ? 'text-emerald-400'
+                            : 'text-red-400'
+                        }`}
+                      >
                         {selectedStock.currentPrice >= selectedStock.previousClose ? '+' : ''}
-                        {(selectedStock.currentPrice - selectedStock.previousClose).toFixed(2)} 
-                        ({((selectedStock.currentPrice - selectedStock.previousClose) / selectedStock.previousClose * 100).toFixed(2)}%)
+                        {(selectedStock.currentPrice - selectedStock.previousClose).toFixed(2)} (
+                        {(
+                          ((selectedStock.currentPrice - selectedStock.previousClose) /
+                            selectedStock.previousClose) *
+                          100
+                        ).toFixed(2)}
+                        %)
                       </p>
                     </div>
                   </div>
-                  <CandlestickChart data={selectedStock.historicalData} analysis={analysis} ticker={selectedStock.ticker} />
+                  <CandlestickChart
+                    data={selectedStock.historicalData}
+                    analysis={analysis}
+                    ticker={selectedStock.ticker}
+                  />
                 </div>
               )}
 
@@ -294,26 +293,14 @@ export default function App() {
               )}
 
               {activeTab === 'forecast' && (
-                <FinancialForecaster cagr={cagr} ticker={selectedStock.ticker} isLiveData={selectedStock.isLiveData} />
+                <FinancialForecaster
+                  cagr={cagr}
+                  ticker={selectedStock.ticker}
+                  isLiveData={selectedStock.isLiveData}
+                />
               )}
             </div>
           </>
-        )}
-
-        {/* Empty State */}
-        {!isLoading && !selectedStock && stocksData && stocksData.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-20">
-            <BarChart3 className="w-16 h-16 text-slate-700 mb-4" />
-            <h2 className="text-xl font-bold text-slate-400 mb-2">No stocks selected</h2>
-            <p className="text-slate-500 mb-4">Add a stock to get started with analysis</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-            >
-              <Plus className="w-5 h-5" />
-              Add Your First Stock
-            </button>
-          </div>
         )}
       </main>
 
@@ -322,29 +309,25 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
-              StockSight — Real-time stock data from multiple sources (Alpha Vantage, Yahoo Finance, Finnhub). For educational purposes only. Not financial advice.
+              StockSight — Real-time stock data from multiple sources. For educational purposes only. Not financial advice.
             </p>
             <div className="flex items-center gap-3 text-xs text-slate-600">
               <span className="flex items-center gap-1">
                 <Wifi className="w-3 h-3" />
                 Live prices refresh every 60s
               </span>
-              <span>•</span>
-              <span>3 API sources with fallback</span>
             </div>
           </div>
           {!hasLiveData && stocksData && (
             <div className="mt-3 p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
               <p className="text-xs text-amber-300">
-                <strong>Note:</strong> Live data APIs are currently unavailable. Showing simulated data for demonstration. 
-                In production, this would fetch real-time prices from Alpha Vantage, Yahoo Finance, or Finnhub APIs.
+                <strong>Note:</strong> Live data APIs are currently unavailable. Showing simulated data for demonstration.
               </p>
             </div>
           )}
         </div>
       </footer>
 
-      {/* Add Stock Modal */}
       <AddStockModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}

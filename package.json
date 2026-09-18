@@ -5,13 +5,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "start": "vite",
+    "dev": "vite --port 4000 --strictPort",
+    "start": "vite --port 4000 --strictPort",
     "build": "vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "preview": "vite preview --port 4000 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types tests/analytics.test.ts"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
     "date-fns": "^2.30.0",
     "lightweight-charts": "^5.2.1",
     "lucide-react": "^0.294.0",

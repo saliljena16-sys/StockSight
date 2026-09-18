@@ -1,6 +1,6 @@
-import { StockDataPoint } from './mockData';
+import type { StockDataPoint } from './mockData';
 
-export type Recommendation = 'STRONG BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG SELL';
+export type Recommendation = 'STRONG BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG SELL' | 'UNAVAILABLE';
 
 export interface AnalysisResult {
   recommendation: Recommendation;
@@ -12,6 +12,7 @@ export interface AnalysisResult {
   sma50Current: number;
   sma200Current: number;
   signals: Signal[];
+  isValid: boolean;
 }
 
 export interface Signal {
@@ -63,16 +64,39 @@ function calculateRSI(data: number[], period: number = 14): number[] {
   return rsi;
 }
 
-export function analyzeStock(stockData: StockDataPoint[]): AnalysisResult {
+export function analyzeStock(stockData: StockDataPoint[], hasRealHistory = true): AnalysisResult {
   const closePrices = stockData.map(d => d.close);
   const sma50 = calculateSMA(closePrices, 50);
   const sma200 = calculateSMA(closePrices, 200);
   const rsi = calculateRSI(closePrices, 14);
 
-  const currentRSI = rsi.filter(v => !isNaN(v)).pop() || 50;
-  const sma50Current = sma50.filter(v => !isNaN(v)).pop() || 0;
-  const sma200Current = sma200.filter(v => !isNaN(v)).pop() || 0;
+  const currentRSI = rsi.filter(v => !isNaN(v)).pop() ?? NaN;
+  const sma50Current = sma50.filter(v => !isNaN(v)).pop() ?? NaN;
+  const sma200Current = sma200.filter(v => !isNaN(v)).pop() ?? NaN;
   const currentPrice = closePrices[closePrices.length - 1];
+
+  if (!hasRealHistory || stockData.length < 200 || !Number.isFinite(currentPrice) ||
+      !Number.isFinite(sma50Current) || !Number.isFinite(sma200Current) ||
+      !Number.isFinite(currentRSI)) {
+    return {
+      recommendation: 'UNAVAILABLE',
+      confidence: 0,
+      sma50,
+      sma200,
+      rsi,
+      currentRSI,
+      sma50Current,
+      sma200Current,
+      signals: [{
+        type: 'neutral',
+        name: 'Insufficient real market history',
+        description: hasRealHistory
+          ? `At least 200 daily market sessions are required; ${stockData.length} are available.`
+          : 'A recommendation is not calculated from simulated prices.',
+      }],
+      isValid: false,
+    };
+  }
 
   const signals: Signal[] = [];
   let score = 0;
@@ -141,7 +165,8 @@ export function analyzeStock(stockData: StockDataPoint[]): AnalysisResult {
     currentRSI,
     sma50Current,
     sma200Current,
-    signals
+    signals,
+    isValid: true,
   };
 }
 

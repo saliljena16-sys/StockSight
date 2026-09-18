@@ -11,7 +11,7 @@ import { BarChart3, Plus, RefreshCw, Activity, TrendingUp, TrendingDown, EyeOff,
 import LatestNewsPanel from './components/LatestNewsPanel';
 import CompanyMark from './components/CompanyMark';
 import { getCompanyMetadata } from './utils/companyMetadata';
-import AuthModal from './components/AuthModal';
+import AuthModal, { AuthResult } from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
 
 const CandlestickChart = lazy(() => import('./components/CandlestickChart'));
@@ -508,20 +508,29 @@ export default function App() {
     void savePortfolioState({ portfolios, holdings, cash: portfolioCash, transactions: portfolioTransactions }, userId);
   }, [portfolios, portfolioQuantities, portfolioAverageCosts, portfolioCash, portfolioTransactions, isHydrated, userId]);
 
-  const handleAuth = async (mode: 'signin' | 'signup', email: string, password: string): Promise<string | null> => {
+  const handleAuth = async (mode: 'signin' | 'signup', email: string, password: string): Promise<AuthResult> => {
     if (!supabase) {
-      return 'Cloud sync is not configured for this deployment.';
+      return { error: 'Cloud sync is not configured for this deployment.' };
     }
     const { data, error } = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password });
+      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/` } });
     if (error) {
-      return error.message;
+      return { error: error.message.toLowerCase().includes('email not confirmed') ? 'Verify your email using the confirmation link before signing in.' : error.message };
+    }
+    if (mode === 'signup' && !data.session) {
+      return { confirmationRequired: true };
     }
     setUserId(data.user?.id ?? null);
     setUserEmail(data.user?.email ?? null);
-    setNotice(mode === 'signup' && !data.session ? 'Check your email to confirm your account.' : 'Portfolio sync is active.');
-    return null;
+    setNotice('Portfolio sync is active.');
+    return {};
+  };
+
+  const handleResendConfirmation = async (email: string): Promise<string | null> => {
+    if (!supabase) return 'Cloud sync is not configured.';
+    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}/` } });
+    return error?.message ?? null;
   };
 
   const handleSignOut = async () => {
@@ -1454,7 +1463,7 @@ export default function App() {
         onAdd={addStock}
         existingTickers={activeTickers}
       />
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSubmit={handleAuth} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSubmit={handleAuth} onResend={handleResendConfirmation} />
       <HoldingModal
         ticker={editingTicker}
         initialQuantity={editingTicker ? (portfolioQuantities[activePortfolio]?.[editingTicker] ?? 0) : 0}

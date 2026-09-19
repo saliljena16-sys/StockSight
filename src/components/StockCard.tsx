@@ -49,7 +49,7 @@ export default function StockCard({ stock, analysis, isSelected, onClick }: Stoc
     <button
       onClick={onClick}
       aria-pressed={isSelected}
-      className={`relative min-h-[152px] min-w-0 w-full overflow-hidden rounded-[10px] border p-5 text-left transition-all duration-200 ${
+      className={`relative min-h-[148px] min-w-0 w-full overflow-hidden rounded-[10px] border p-4 text-left transition-all duration-200 sm:min-h-[152px] sm:p-5 ${
         isSelected
           ? 'border-white/[.18] bg-[var(--surface-2)] shadow-[inset_3px_0_0_#b7f34a]'
           : 'border-white/[.1] bg-[var(--surface-1)] hover:border-white/20 hover:bg-[var(--surface-2)]'
@@ -73,7 +73,7 @@ export default function StockCard({ stock, analysis, isSelected, onClick }: Stoc
         </div>
       </div>
       <div className="mt-5 relative z-10">
-        <p className="font-mono text-[28px] font-medium tracking-[-0.04em] text-white">${stock.currentPrice.toFixed(2)}</p>
+            <p className="font-mono text-[24px] font-medium tracking-[-0.04em] text-white sm:text-[28px]">${stock.currentPrice.toFixed(2)}</p>
         <p className={`text-xs font-mono mt-1 ${isPositive ? 'text-lime-300' : 'text-rose-400'}`}>
           {isPositive ? '+' : ''}{priceChange.toFixed(2)} ({isPositive ? '+' : ''}{priceChangePercent.toFixed(2)}%)
         </p>

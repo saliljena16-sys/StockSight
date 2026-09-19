@@ -51,6 +51,7 @@ export default function App() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [primaryView, setPrimaryView] = useState<PrimaryView>('watchlist');
   const globalSearchRef = useRef<HTMLInputElement>(null);
+  const mobileSearchRef = useRef<HTMLInputElement>(null);
   const persistenceOwnerRef = useRef<string | null | undefined>(undefined);
 
   const applyPortfolioState = (saved: PortfolioState) => {
@@ -706,7 +707,7 @@ export default function App() {
     const handleCommandSearch = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        globalSearchRef.current?.focus();
+        (window.innerWidth < 1024 ? mobileSearchRef.current : globalSearchRef.current)?.focus();
       }
     };
 
@@ -728,15 +729,15 @@ export default function App() {
   return (
     <div className="min-h-screen bg-transparent text-[#f3f5f2]">
       <header className="sticky top-0 z-40 border-b border-white/[.09] bg-[#090d0f]/95 backdrop-blur-xl">
-        <div className="mx-auto w-[calc(100%-32px)] max-w-[1680px] xl:w-[calc(100%-48px)]">
-          <div className="flex h-[72px] items-center gap-6">
+        <div className="mx-auto w-[calc(100%-24px)] max-w-[1680px] sm:w-[calc(100%-32px)] xl:w-[calc(100%-48px)]">
+          <div className="flex h-16 items-center gap-3 sm:h-[72px] sm:gap-6">
             <div className="flex shrink-0 items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-[8px] bg-lime-300 text-[#09100b]">
+              <div className="grid h-9 w-9 place-items-center rounded-[8px] bg-lime-300 text-[#09100b] sm:h-10 sm:w-10">
                 <BarChart3 className="h-5 w-5" />
               </div>
               <div>
                 <h1 className="text-[17px] font-semibold leading-5 tracking-[-.03em] text-white">StockSight</h1>
-                <p className="text-[10px] uppercase tracking-[.18em] text-[#727b74]">Market workspace</p>
+                <p className="hidden text-[10px] uppercase tracking-[.18em] text-[#727b74] min-[370px]:block">Market workspace</p>
               </div>
             </div>
 
@@ -818,6 +819,7 @@ export default function App() {
 
               <button
                 onClick={() => setShowAddModal(true)}
+                aria-label="Add stock"
                 className="flex h-10 items-center gap-2 rounded-[8px] bg-lime-300 px-3 text-sm font-semibold text-[#10140f] hover:bg-lime-200 sm:px-4"
               >
                 <Plus className="w-4 h-4" />
@@ -828,14 +830,29 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="flex overflow-x-auto border-b border-white/[.08] bg-[#090d0f] px-4 xl:hidden" aria-label="Primary navigation">
+      <nav className="mobile-scroll sticky top-16 z-30 grid grid-cols-5 overflow-x-auto border-b border-white/[.08] bg-[#090d0f]/95 px-2 backdrop-blur-xl sm:top-[72px] sm:px-4 xl:hidden" aria-label="Primary navigation">
         {([['Watchlist', 'watchlist'], ['Markets', 'markets'], ['Screeners', 'screeners'], ['News', 'news'], ['Analytics', 'analytics']] as Array<[string, PrimaryView]>).map(([label, view]) => (
-          <button key={view} onClick={() => setPrimaryView(view)} aria-current={primaryView === view ? 'page' : undefined} className={`min-h-11 shrink-0 border-b-2 px-4 text-sm font-medium ${primaryView === view ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)]'}`}>{label}</button>
+          <button key={view} onClick={() => setPrimaryView(view)} aria-current={primaryView === view ? 'page' : undefined} className={`min-h-11 min-w-0 border-b-2 px-1 text-[11px] font-medium min-[380px]:text-xs sm:px-4 sm:text-sm ${primaryView === view ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)]'}`}>{label}</button>
         ))}
       </nav>
 
+      <div className="border-b border-white/[.08] bg-[#090d0f] px-3 py-3 lg:hidden">
+        <div className="relative mx-auto max-w-[1680px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+          <input
+            ref={mobileSearchRef}
+            value={globalSearch}
+            onChange={(event) => setGlobalSearch(event.target.value)}
+            onKeyDown={(event) => event.key === 'Enter' && handleGlobalSearch()}
+            placeholder="Search a symbol, e.g. AAPL"
+            aria-label="Search symbols or companies"
+            className="h-11 w-full rounded-[9px] border border-white/[.1] bg-[var(--surface-1)] pl-10 pr-4 text-base text-white placeholder:text-sm placeholder:text-[var(--text-tertiary)] focus:border-lime-300/35 focus:outline-none"
+          />
+        </div>
+      </div>
+
       {primaryView === 'watchlist' && <section className="border-b border-white/[.08] bg-[#0b1011]/75">
-        <div className="mx-auto flex min-h-[104px] w-[calc(100%-32px)] max-w-[1680px] flex-col justify-center gap-4 py-5 md:flex-row md:items-center md:justify-between xl:w-[calc(100%-48px)]">
+        <div className="mx-auto flex min-h-[92px] w-[calc(100%-24px)] max-w-[1680px] flex-col justify-center gap-3 py-4 sm:w-[calc(100%-32px)] md:min-h-[104px] md:flex-row md:items-center md:justify-between md:gap-4 md:py-5 xl:w-[calc(100%-48px)]">
           <div className="flex items-stretch gap-4">
             <span className="w-[3px] rounded-full bg-lime-300/80" />
             <div>
@@ -846,7 +863,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+          <div className="mobile-scroll flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
             {Object.keys(portfolios).length > 1 && Object.keys(portfolios).map((portfolio) => (
               <button
                 key={portfolio}
@@ -862,29 +879,35 @@ export default function App() {
             ))}
             <button
               onClick={handleRenamePortfolio}
+              aria-label="Rename portfolio"
+              title="Rename portfolio"
               className="inline-flex min-h-10 items-center gap-2 rounded-[7px] border border-white/[.1] px-4 text-sm text-[var(--text-secondary)] hover:bg-white/[.04] hover:text-white"
             >
-              <Pencil className="h-3.5 w-3.5" />Rename
+              <Pencil className="h-3.5 w-3.5" /><span className="hidden sm:inline">Rename</span>
             </button>
             <button
               onClick={handleDeletePortfolio}
               disabled={Object.keys(portfolios).length <= 1}
+              aria-label="Delete portfolio"
+              title="Delete portfolio"
               className="inline-flex min-h-10 items-center gap-2 rounded-[7px] border border-red-400/20 bg-red-400/[.03] px-4 text-sm text-red-300/80 hover:bg-red-400/[.07] disabled:cursor-not-allowed disabled:opacity-35"
             >
-              <Trash2 className="h-3.5 w-3.5" />Delete
+              <Trash2 className="h-3.5 w-3.5" /><span className="hidden sm:inline">Delete</span>
             </button>
             <button
               onClick={handleCreatePortfolio}
+              aria-label="Create portfolio"
+              title="Create portfolio"
               className="min-h-10 whitespace-nowrap rounded-[7px] border border-white/[.1] px-4 text-sm text-white hover:bg-white/[.05]"
             >
-              <Plus className="mr-1.5 inline h-4 w-4" />New Portfolio
+              <Plus className="inline h-4 w-4 sm:mr-1.5" /><span className="hidden sm:inline">New Portfolio</span>
             </button>
           </div>
         </div>
       </section>}
 
       {/* Main Content */}
-      <main className="mx-auto min-w-0 w-[calc(100%-32px)] max-w-[1680px] py-6 xl:w-[calc(100%-48px)]">
+      <main className="mx-auto min-w-0 w-[calc(100%-24px)] max-w-[1680px] py-4 sm:w-[calc(100%-32px)] sm:py-6 xl:w-[calc(100%-48px)]">
         {notice && <div role="status" className="mb-5 flex items-center justify-between rounded-[8px] border border-lime-300/20 bg-lime-300/[.06] px-4 py-3 text-sm text-lime-100"><span>{notice}</span><button onClick={() => setNotice(null)} className="text-xs text-lime-200/70 hover:text-white">Dismiss</button></div>}
         {primaryView !== 'watchlist' && (
           <PrimaryWorkspace
@@ -911,7 +934,7 @@ export default function App() {
 
         {primaryView === 'watchlist' && stocksData && (
           <div className="mb-5 flex flex-col gap-3 border-b border-white/[.08] sm:flex-row sm:items-end sm:justify-between">
-            <nav className="flex items-center gap-7 overflow-x-auto" aria-label="Portfolio views">
+            <nav className="mobile-scroll flex items-center gap-5 overflow-x-auto" aria-label="Portfolio views">
               {[
                 { label: 'Summary', value: 'summary' },
                 { label: 'Holdings', value: 'holdings' },
@@ -1246,7 +1269,7 @@ export default function App() {
             </div>
             <p className="hidden sm:block text-xs text-[#69716b]">Select a symbol to inspect</p>
           </div>
-          <div className="min-w-0 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
+          <div className="mb-6 grid min-w-0 grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:mb-8 xl:grid-cols-4">
             {stocksData.map((stock) => {
               const stockAnalysis = analyzeStock(stock.historicalData, stock.hasRealHistory);
               return (
@@ -1286,7 +1309,7 @@ export default function App() {
 
         {primaryView === 'watchlist' && selectedStock && analysis && (
           <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(340px,.92fr)]">
-            <section className="min-w-0 rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] p-5 lg:p-6">
+            <section className="min-w-0 rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] p-4 sm:p-5 lg:p-6">
               <div className="mb-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-center gap-3">
                   <CompanyMark ticker={selectedStock.ticker} size={44} className="rounded-[9px]" />
@@ -1307,11 +1330,11 @@ export default function App() {
                 </div>
               </div>
 
-            <div className="mb-5 flex items-center gap-1 border-b border-white/[.08]">
+            <div className="mobile-scroll mb-5 flex items-center gap-1 overflow-x-auto border-b border-white/[.08]">
               <button
                 onClick={() => setActiveTab('chart')}
                 aria-pressed={activeTab === 'chart'}
-                className={`flex min-h-11 items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
                   activeTab === 'chart' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
                 }`}
               >
@@ -1321,7 +1344,7 @@ export default function App() {
               <button
                 onClick={() => setActiveTab('analysis')}
                 aria-pressed={activeTab === 'analysis'}
-                className={`flex min-h-11 items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
                   activeTab === 'analysis' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
                 }`}
               >
@@ -1331,7 +1354,7 @@ export default function App() {
               <button
                 onClick={() => setActiveTab('forecast')}
                 aria-pressed={activeTab === 'forecast'}
-                className={`flex min-h-11 items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
                   activeTab === 'forecast' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
                 }`}
               >
@@ -1341,7 +1364,7 @@ export default function App() {
               <button
                 onClick={() => setActiveTab('compare')}
                 aria-pressed={activeTab === 'compare'}
-                className={`flex min-h-11 items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'compare' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}
+                className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${activeTab === 'compare' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}
               >
                 <Layers3 className="h-4 w-4" />Compare
               </button>
@@ -1472,7 +1495,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="mt-10 border-t border-white/[.07] py-6">
-        <div className="mx-auto w-[calc(100%-32px)] max-w-[1680px] xl:w-[calc(100%-48px)]">
+        <div className="mx-auto w-[calc(100%-24px)] max-w-[1680px] sm:w-[calc(100%-32px)] xl:w-[calc(100%-48px)]">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               StockSight — Real-time stock data from multiple sources. For educational purposes only. Not financial advice.

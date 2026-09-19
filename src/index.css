@@ -30,6 +30,7 @@ html, body {
   min-width: 320px;
   min-height: 100%;
   overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
 }
 
 #root { min-width: 0; overflow-x: clip; }
@@ -45,6 +46,20 @@ body {
 
 button, input, select { font: inherit; }
 button { cursor: pointer; }
+
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-scroll {
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-scroll::-webkit-scrollbar {
+  display: none;
+}
 
 button, a, input, select {
   transition: color var(--ease-out), background-color var(--ease-out), border-color var(--ease-out), opacity var(--ease-out);

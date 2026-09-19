@@ -20,7 +20,27 @@ export const DEFAULT_PORTFOLIO_STATE: PortfolioState = {
 
 const DB_NAME = 'stocksight-db';
 const STORE_NAME = 'portfolios';
-const RECORD_ID = 'app-state-v2';
+const GUEST_RECORD_ID = 'guest-state-v3';
+const POPULAR_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'JPM', 'AMD', 'NFLX', 'WMT', 'JNJ'];
+
+export function createGuestPortfolioState(): PortfolioState {
+  const shuffled = [...POPULAR_TICKERS];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  const tickers = shuffled.slice(0, 4);
+  return {
+    portfolios: { 'Popular Picks': tickers },
+    holdings: { 'Popular Picks': {} },
+    cash: { 'Popular Picks': 0 },
+    transactions: { 'Popular Picks': [] },
+  };
+}
+
+function getLocalRecordId(userId?: string | null) {
+  return userId ? `user-cache-${userId}` : GUEST_RECORD_ID;
+}
 
 function normalizeState(value: unknown): PortfolioState {
   if (!value || typeof value !== 'object') return DEFAULT_PORTFOLIO_STATE;
@@ -49,25 +69,25 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
-async function loadLocal(): Promise<PortfolioState> {
+async function loadLocal(userId?: string | null): Promise<PortfolioState> {
   try {
     const db = await openDatabase();
     return await new Promise(resolve => {
-      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(RECORD_ID);
-      request.onsuccess = () => resolve(normalizeState(request.result?.value));
-      request.onerror = () => resolve(DEFAULT_PORTFOLIO_STATE);
+      const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(getLocalRecordId(userId));
+      request.onsuccess = () => resolve(request.result?.value ? normalizeState(request.result.value) : createGuestPortfolioState());
+      request.onerror = () => resolve(createGuestPortfolioState());
     });
   } catch (error) {
     console.warn('Failed to load local portfolio state.', error);
-    return DEFAULT_PORTFOLIO_STATE;
+    return createGuestPortfolioState();
   }
 }
 
-async function saveLocal(state: PortfolioState): Promise<void> {
+async function saveLocal(state: PortfolioState, userId?: string | null): Promise<void> {
   try {
     const db = await openDatabase();
     await new Promise<void>((resolve, reject) => {
-      const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put({ id: RECORD_ID, value: state });
+      const request = db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).put({ id: getLocalRecordId(userId), value: state });
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error ?? new Error('Failed to save portfolio state'));
     });
@@ -87,11 +107,11 @@ export async function loadPortfolioState(userId?: string | null): Promise<Portfo
       console.warn('Cloud portfolio fetch failed; using local state.', error);
     }
   }
-  return loadLocal();
+  return loadLocal(userId);
 }
 
 export async function savePortfolioState(state: PortfolioState, userId?: string | null): Promise<void> {
-  await saveLocal(state);
+  await saveLocal(state, userId);
   if (!userId || !hasSupabaseConfig || !supabase) return;
   try {
     const { error } = await supabase.from('portfolio_state').upsert({ id: `user-${userId}`, data: state }, { onConflict: 'id' });

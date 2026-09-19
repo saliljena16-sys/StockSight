@@ -5,7 +5,7 @@ import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
 import StockCard from './components/StockCard';
 import AnalysisPanel from './components/AnalysisPanel';
 import AddStockModal from './components/AddStockModal';
-import { DEFAULT_PORTFOLIOS, loadPortfolioState, savePortfolioState } from './utils/portfolioDb';
+import { createGuestPortfolioState, DEFAULT_PORTFOLIOS, loadPortfolioState, PortfolioState, savePortfolioState } from './utils/portfolioDb';
 import { supabase } from './utils/supabase';
 import { BarChart3, Plus, RefreshCw, Activity, TrendingUp, TrendingDown, EyeOff, Wifi, WifiOff, Loader2, Search, UserRound, MoreHorizontal, Pencil, Trash2, WalletCards, Layers3, ArrowUpRight, ArrowDownRight, LineChart } from 'lucide-react';
 import LatestNewsPanel from './components/LatestNewsPanel';
@@ -49,6 +49,18 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState('');
   const globalSearchRef = useRef<HTMLInputElement>(null);
+  const persistenceOwnerRef = useRef<string | null | undefined>(undefined);
+
+  const applyPortfolioState = (saved: PortfolioState) => {
+    setPortfolios(saved.portfolios);
+    setPortfolioQuantities(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.quantity]))])));
+    setPortfolioAverageCosts(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.averageCost]))])));
+    setPortfolioCash(saved.cash);
+    setPortfolioTransactions(saved.transactions);
+    const firstPortfolio = Object.keys(saved.portfolios)[0];
+    setActivePortfolio(firstPortfolio);
+    setSelectedTicker(saved.portfolios[firstPortfolio]?.[0] ?? STARTER_STOCKS[0]);
+  };
 
   const activeTickers = portfolios[activePortfolio] ?? [];
 
@@ -467,19 +479,15 @@ export default function App() {
 
     const hydrateSession = async () => {
       const currentUser = supabase ? (await supabase.auth.getSession()).data.session?.user ?? null : null;
-      setUserId(currentUser?.id ?? null);
-      setUserEmail(currentUser?.email ?? null);
-
-      const saved = await loadPortfolioState(currentUser?.id ?? null);
+      const nextUserId = currentUser?.id ?? null;
+      const saved = await loadPortfolioState(nextUserId);
       if (!isMounted) return;
 
+      persistenceOwnerRef.current = nextUserId;
+      setUserId(nextUserId);
+      setUserEmail(currentUser?.email ?? null);
       if (saved && Object.keys(saved.portfolios).length > 0) {
-        setPortfolios(saved.portfolios);
-        setPortfolioQuantities(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.quantity]))])));
-        setPortfolioAverageCosts(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.averageCost]))])));
-        setPortfolioCash(saved.cash);
-        setPortfolioTransactions(saved.transactions);
-        setActivePortfolio(Object.keys(saved.portfolios)[0]);
+        applyPortfolioState(saved);
       }
 
       setIsHydrated(true);
@@ -503,7 +511,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isHydrated) return;
+    if (!isHydrated || persistenceOwnerRef.current !== userId) return;
     const holdings = Object.fromEntries(Object.keys(portfolios).map(name => [name, Object.fromEntries(Object.entries(portfolioQuantities[name] ?? {}).map(([ticker, quantity]) => [ticker, { quantity, averageCost: portfolioAverageCosts[name]?.[ticker] ?? 0 }]))]));
     void savePortfolioState({ portfolios, holdings, cash: portfolioCash, transactions: portfolioTransactions }, userId);
   }, [portfolios, portfolioQuantities, portfolioAverageCosts, portfolioCash, portfolioTransactions, isHydrated, userId]);
@@ -536,8 +544,13 @@ export default function App() {
   const handleSignOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
+    const guestState = createGuestPortfolioState();
+    persistenceOwnerRef.current = null;
     setUserId(null);
     setUserEmail(null);
+    applyPortfolioState(guestState);
+    await savePortfolioState(guestState, null);
+    setNotice('Signed out. Showing a fresh selection of popular stocks.');
   };
 
   const handleCreatePortfolio = () => {

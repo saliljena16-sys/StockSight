@@ -13,6 +13,7 @@ import CompanyMark from './components/CompanyMark';
 import { getCompanyMetadata } from './utils/companyMetadata';
 import AuthModal, { AuthResult } from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
+import PrimaryWorkspace, { PrimaryView } from './components/PrimaryWorkspace';
 
 const CandlestickChart = lazy(() => import('./components/CandlestickChart'));
 const FinancialForecaster = lazy(() => import('./components/FinancialForecaster'));
@@ -48,6 +49,7 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [primaryView, setPrimaryView] = useState<PrimaryView>('watchlist');
   const globalSearchRef = useRef<HTMLInputElement>(null);
   const persistenceOwnerRef = useRef<string | null | undefined>(undefined);
 
@@ -741,21 +743,22 @@ export default function App() {
             <nav className="hidden h-full items-center gap-7 xl:flex" aria-label="Primary navigation">
               <button
                 type="button"
-                aria-current="page"
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="relative h-full text-sm font-medium text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-lime-300 focus-visible:rounded-sm"
+                aria-current={primaryView === 'watchlist' ? 'page' : undefined}
+                onClick={() => { setPrimaryView('watchlist'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                className={`relative h-full text-sm font-medium focus-visible:rounded-sm ${primaryView === 'watchlist' ? 'text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-lime-300' : 'text-[var(--text-secondary)] hover:text-white'}`}
               >
                 Watchlist
               </button>
-              {['Markets', 'Screeners', 'News', 'Analytics'].map((item) => (
-                <span
+              {([['Markets', 'markets'], ['Screeners', 'screeners'], ['News', 'news'], ['Analytics', 'analytics']] as Array<[string, PrimaryView]>).map(([item, view]) => (
+                <button
                   key={item}
-                  aria-disabled="true"
-                  title={`${item} — Coming soon`}
-                  className="cursor-not-allowed text-sm font-medium text-[var(--text-tertiary)] opacity-55"
+                  type="button"
+                  aria-current={primaryView === view ? 'page' : undefined}
+                  onClick={() => { setPrimaryView(view); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  className={`relative h-full text-sm font-medium ${primaryView === view ? 'text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-lime-300' : 'text-[var(--text-secondary)] hover:text-white'}`}
                 >
                   {item}
-                </span>
+                </button>
               ))}
             </nav>
 
@@ -825,7 +828,13 @@ export default function App() {
         </div>
       </header>
 
-      <section className="border-b border-white/[.08] bg-[#0b1011]/75">
+      <nav className="flex overflow-x-auto border-b border-white/[.08] bg-[#090d0f] px-4 xl:hidden" aria-label="Primary navigation">
+        {([['Watchlist', 'watchlist'], ['Markets', 'markets'], ['Screeners', 'screeners'], ['News', 'news'], ['Analytics', 'analytics']] as Array<[string, PrimaryView]>).map(([label, view]) => (
+          <button key={view} onClick={() => setPrimaryView(view)} aria-current={primaryView === view ? 'page' : undefined} className={`min-h-11 shrink-0 border-b-2 px-4 text-sm font-medium ${primaryView === view ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)]'}`}>{label}</button>
+        ))}
+      </nav>
+
+      {primaryView === 'watchlist' && <section className="border-b border-white/[.08] bg-[#0b1011]/75">
         <div className="mx-auto flex min-h-[104px] w-[calc(100%-32px)] max-w-[1680px] flex-col justify-center gap-4 py-5 md:flex-row md:items-center md:justify-between xl:w-[calc(100%-48px)]">
           <div className="flex items-stretch gap-4">
             <span className="w-[3px] rounded-full bg-lime-300/80" />
@@ -872,12 +881,27 @@ export default function App() {
             </button>
           </div>
         </div>
-      </section>
+      </section>}
 
       {/* Main Content */}
       <main className="mx-auto min-w-0 w-[calc(100%-32px)] max-w-[1680px] py-6 xl:w-[calc(100%-48px)]">
         {notice && <div role="status" className="mb-5 flex items-center justify-between rounded-[8px] border border-lime-300/20 bg-lime-300/[.06] px-4 py-3 text-sm text-lime-100"><span>{notice}</span><button onClick={() => setNotice(null)} className="text-xs text-lime-200/70 hover:text-white">Dismiss</button></div>}
-        {isLoading && !stocksData && (
+        {primaryView !== 'watchlist' && (
+          <PrimaryWorkspace
+            view={primaryView}
+            stocks={stocksData ?? []}
+            quantities={portfolioQuantities[activePortfolio] ?? {}}
+            totalValue={totalPortfolioValue}
+            cash={cashBalance}
+            onInspect={(ticker) => {
+              setSelectedTicker(ticker);
+              setPrimaryView('watchlist');
+              setActiveTab('chart');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          />
+        )}
+        {primaryView === 'watchlist' && isLoading && !stocksData && (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-12 h-12 text-emerald-400 animate-spin mb-4" />
             <h2 className="text-lg font-semibold text-white mb-2">Fetching Live Market Data</h2>
@@ -885,7 +909,7 @@ export default function App() {
           </div>
         )}
 
-        {stocksData && (
+        {primaryView === 'watchlist' && stocksData && (
           <div className="mb-5 flex flex-col gap-3 border-b border-white/[.08] sm:flex-row sm:items-end sm:justify-between">
             <nav className="flex items-center gap-7 overflow-x-auto" aria-label="Portfolio views">
               {[
@@ -916,7 +940,7 @@ export default function App() {
           </div>
         )}
 
-        {stocksData && viewMode === 'table' && (
+        {primaryView === 'watchlist' && stocksData && viewMode === 'table' && (
           <div className="mb-7 overflow-hidden rounded-[10px] border border-white/[.1] bg-[var(--surface-1)]">
             {tableTab !== 'summary' && <div className="flex items-center justify-end gap-3 border-b border-white/[.07] px-4 py-3 sm:px-5">
               <div className="flex items-center gap-2">
@@ -1213,7 +1237,7 @@ export default function App() {
           </div>
         )}
 
-        {stocksData && viewMode === 'cards' && (
+        {primaryView === 'watchlist' && stocksData && viewMode === 'cards' && (
           <>
           <div className="mb-5 flex items-end justify-between">
             <div>
@@ -1260,7 +1284,7 @@ export default function App() {
           </>
         )}
 
-        {selectedStock && analysis && (
+        {primaryView === 'watchlist' && selectedStock && analysis && (
           <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(340px,.92fr)]">
             <section className="min-w-0 rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] p-5 lg:p-6">
               <div className="mb-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

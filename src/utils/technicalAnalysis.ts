@@ -170,10 +170,32 @@ export function analyzeStock(stockData: StockDataPoint[], hasRealHistory = true)
   };
 }
 
-export function calculateCAGR(data: StockDataPoint[]): number {
-  if (data.length < 252) return 0.10;
-  const startPrice = data[0].close;
-  const endPrice = data[data.length - 1].close;
-  const years = data.length / 252;
-  return Math.max(-0.2, Math.min(0.5, Math.pow(endPrice / startPrice, 1 / years) - 1));
+/** Roughly one year of trading sessions; less than this is not enough to state an annual rate. */
+export const MIN_CAGR_SESSIONS = 252;
+
+export interface HistoricalCAGR {
+  /** Compound annual growth rate of the closing price, e.g. 0.12 for 12%. */
+  rate: number;
+  startDate: string;
+  endDate: string;
+  years: number;
+}
+
+/**
+ * Price-only compound annual growth over the full series, measured between the first and last
+ * close and annualised by calendar time. Returns null when there is less than a year of data or
+ * the prices are unusable — callers must show that state rather than substitute a default rate.
+ */
+export function calculateCAGR(data: StockDataPoint[]): HistoricalCAGR | null {
+  if (data.length < MIN_CAGR_SESSIONS) return null;
+  const first = data[0];
+  const last = data[data.length - 1];
+  if (!(first.close > 0) || !(last.close > 0)) return null;
+
+  const years = (Date.parse(`${last.date}T00:00:00Z`) - Date.parse(`${first.date}T00:00:00Z`)) / (365.25 * 86_400_000);
+  if (!Number.isFinite(years) || years < 0.9) return null;
+
+  const rate = Math.pow(last.close / first.close, 1 / years) - 1;
+  if (!Number.isFinite(rate)) return null;
+  return { rate, startDate: first.date, endDate: last.date, years };
 }

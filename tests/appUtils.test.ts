@@ -144,7 +144,7 @@ test('symbol search resolves blank, existing and new tickers', () => {
   assert.equal(isSearchShortcut({ key: 'j', ctrlKey: true, metaKey: false }), false);
 });
 
-test('sector filter helpers', () => {
+test('sector selection helpers', () => {
   const stocks = [{ sector: 'Energy' }, { sector: '' }, { sector: 'Technology' }, { sector: 'Energy' }];
   assert.deepEqual(getAvailableSectors(stocks), ['Energy', 'Technology']);
   assert.equal(filterStocksBySector(stocks, 'All').length, 4);

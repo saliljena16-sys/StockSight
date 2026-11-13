@@ -1,16 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addPortfolio,
   addTicker,
   createHoldingTransaction,
+  createPortfolioIn,
   incrementQuantity,
-  moveEntry,
   omitKey,
   omitTicker,
   prependTransaction,
   removeTicker,
-  renamePortfolioTickers,
+  renamePortfolioIn,
   sanitizeQuantity,
   setAverageCost,
   setCash,
@@ -19,7 +18,6 @@ import {
   splitHoldings,
   syncQuantitiesWithPortfolios,
   toPortfolioState,
-  withEntry,
 } from '../src/utils/portfolioState.ts';
 
 test('listing and unlisting tickers', () => {
@@ -84,21 +82,52 @@ test('holding edits record a buy or sell for the change in shares', () => {
   assert.deepEqual(list.Core.map(t => t.ticker), ['KO', 'AAPL'], 'newest first');
 });
 
-test('creating, renaming and deleting portfolios', () => {
-  const prev = { Core: ['AAPL'] };
-  assert.deepEqual(addPortfolio(prev, 'New'), { Core: ['AAPL'], New: [] });
-  assert.equal(addPortfolio(prev, 'Core'), prev);
-  assert.deepEqual(withEntry({ Core: 5 }, 'New', 0), { Core: 5, New: 0 });
+// Two portfolios with real data, matching the collision the earlier equivalence harness recorded.
+const maps = () => ({
+  portfolios: { Core: ['AAPL'], Second: ['TSLA', 'JPM'] },
+  quantities: { Core: { AAPL: 10 }, Second: { TSLA: 3, JPM: 1 } },
+  averageCosts: { Core: { AAPL: 150 }, Second: { TSLA: 200, JPM: 120 } },
+  cash: { Core: 1234.5, Second: 50 },
+  transactions: { Core: [], Second: [{ id: 't1', ticker: 'TSLA', type: 'buy' as const, quantity: 3, price: 200, date: '2026-01-02T00:00:00.000Z' }] },
+});
 
-  assert.deepEqual(renamePortfolioTickers({ A: ['X'], B: ['Y'] }, 'A', 'C'), { B: ['Y'], C: ['X'] });
-  const taken = { A: ['X'], B: ['Y'] };
-  assert.equal(renamePortfolioTickers(taken, 'A', 'B'), taken);
+test('creating a portfolio adds empty entries to every map', () => {
+  const next = createPortfolioIn(maps(), 'Growth');
+  assert.ok(next);
+  assert.deepEqual(next.portfolios.Growth, []);
+  assert.deepEqual(next.quantities.Growth, {});
+  assert.deepEqual(next.averageCosts.Growth, {});
+  assert.equal(next.cash.Growth, 0);
+  assert.deepEqual(next.transactions.Growth, []);
+  assert.deepEqual(next.quantities.Second, { TSLA: 3, JPM: 1 });
+});
 
-  assert.deepEqual(moveEntry({ A: 1, B: 2 }, 'A', 'C', 0), { B: 2, C: 1 });
-  assert.deepEqual(moveEntry({ B: 2 }, 'A', 'C', 0), { B: 2, C: 0 });
-  // Moving onto an existing key overwrites it in place.
-  assert.deepEqual(Object.entries(moveEntry({ A: 1, B: 2, C: 3 }, 'A', 'B', 0)), [['B', 1], ['C', 3]]);
+test('creating a portfolio with an existing name is refused and resets nothing', () => {
+  assert.equal(createPortfolioIn(maps(), 'Second'), null);
+  assert.equal(createPortfolioIn(maps(), ' second '), null);
+});
 
+test('renaming moves every map entry to the new name', () => {
+  const next = renamePortfolioIn(maps(), 'Core', 'Long term');
+  assert.ok(next);
+  assert.deepEqual(Object.keys(next.portfolios), ['Second', 'Long term']);
+  assert.deepEqual(next.quantities['Long term'], { AAPL: 10 });
+  assert.deepEqual(next.averageCosts['Long term'], { AAPL: 150 });
+  assert.equal(next.cash['Long term'], 1234.5);
+  assert.equal('Core' in next.cash, false);
+  assert.equal('Core' in next.quantities, false);
+});
+
+test('renaming onto another portfolio is refused and overwrites nothing', () => {
+  assert.equal(renamePortfolioIn(maps(), 'Core', 'Second'), null);
+  assert.equal(renamePortfolioIn(maps(), 'Core', 'SECOND'), null);
+  // Re-casing its own name is allowed; an unchanged name or a missing source is a no-op.
+  assert.ok(renamePortfolioIn(maps(), 'Core', 'CORE'));
+  assert.equal(renamePortfolioIn(maps(), 'Core', 'Core'), null);
+  assert.equal(renamePortfolioIn(maps(), 'Nope', 'Other'), null);
+});
+
+test('deleting a portfolio removes only its key', () => {
   assert.deepEqual(omitKey({ A: 1, B: 2 }, 'A'), { B: 2 });
 });
 

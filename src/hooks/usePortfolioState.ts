@@ -2,16 +2,15 @@ import { useEffect, useState } from 'react';
 import { STARTER_STOCKS } from '../utils/mockData';
 import { DEFAULT_PORTFOLIOS, type PortfolioState } from '../utils/portfolioDb';
 import {
-  addPortfolio,
   addTicker,
   createHoldingTransaction,
+  createPortfolioIn,
   incrementQuantity,
-  moveEntry,
   omitKey,
   omitTicker,
   prependTransaction,
   removeTicker,
-  renamePortfolioTickers,
+  renamePortfolioIn,
   sanitizeQuantity,
   setAverageCost,
   setCash,
@@ -19,7 +18,7 @@ import {
   setTickerListed,
   splitHoldings,
   syncQuantitiesWithPortfolios,
-  withEntry,
+  type PortfolioMaps,
 } from '../utils/portfolioState';
 import type {
   PortfolioAverageCosts,
@@ -27,7 +26,6 @@ import type {
   PortfolioQuantities,
   PortfolioTickers,
   PortfolioTransactions,
-  Transaction,
 } from '../types/portfolio';
 
 /**
@@ -104,24 +102,44 @@ export function usePortfolioState() {
     setPortfolioCash(prev => setCash(prev, activePortfolio, value));
   };
 
-  /** Creates (or, if the name exists, resets the holdings of) a portfolio and makes it active. */
-  const createPortfolio = (name: string) => {
-    setPortfolios(prev => addPortfolio(prev, name));
-    setPortfolioQuantities(prev => withEntry(prev, name, {}));
-    setPortfolioAverageCosts(prev => withEntry(prev, name, {}));
-    setPortfolioCash(prev => withEntry(prev, name, 0));
-    setPortfolioTransactions(prev => withEntry<Transaction[]>(prev, name, []));
-    setActivePortfolio(name);
+  const currentMaps = (): PortfolioMaps => ({
+    portfolios,
+    quantities: portfolioQuantities,
+    averageCosts: portfolioAverageCosts,
+    cash: portfolioCash,
+    transactions: portfolioTransactions,
+  });
+
+  const applyMaps = (next: PortfolioMaps) => {
+    setPortfolios(next.portfolios);
+    setPortfolioQuantities(next.quantities);
+    setPortfolioAverageCosts(next.averageCosts);
+    setPortfolioCash(next.cash);
+    setPortfolioTransactions(next.transactions);
   };
 
-  /** Renames a portfolio and makes the new name active. */
-  const renamePortfolio = (from: string, to: string) => {
-    setPortfolios(prev => renamePortfolioTickers(prev, from, to));
-    setPortfolioQuantities(prev => moveEntry(prev, from, to, {}));
-    setPortfolioAverageCosts(prev => moveEntry(prev, from, to, {}));
-    setPortfolioCash(prev => moveEntry(prev, from, to, 0));
-    setPortfolioTransactions(prev => moveEntry<Transaction[]>(prev, from, to, []));
+  /**
+   * Creates an empty portfolio and makes it active. Returns false, changing nothing, when the
+   * name clashes with an existing portfolio.
+   */
+  const createPortfolio = (name: string): boolean => {
+    const next = createPortfolioIn(currentMaps(), name);
+    if (!next) return false;
+    applyMaps(next);
+    setActivePortfolio(name);
+    return true;
+  };
+
+  /**
+   * Renames a portfolio and makes the new name active. Returns false, changing nothing, when the
+   * new name clashes with another portfolio.
+   */
+  const renamePortfolio = (from: string, to: string): boolean => {
+    const next = renamePortfolioIn(currentMaps(), from, to);
+    if (!next) return false;
+    applyMaps(next);
     setActivePortfolio(to);
+    return true;
   };
 
   /** Deletes a portfolio and activates the first remaining one. */

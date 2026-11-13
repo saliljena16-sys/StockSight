@@ -1,6 +1,8 @@
 // Pure transforms for the per-portfolio state maps. Each function mirrors one state updater, so
 // the hook can keep the maps as separate useState slices with identical semantics.
 import type { PortfolioState } from './portfolioDb';
+// Explicit extension so the Node test runner can load this module directly.
+import { portfolioNameError } from './portfolioNames.ts';
 import type {
   PortfolioAverageCosts,
   PortfolioCash,
@@ -140,33 +142,53 @@ export function prependTransaction(prev: PortfolioTransactions, portfolio: strin
 
 // --- whole portfolios ---
 
-/** Adds an empty portfolio; returns `prev` unchanged when the name already exists. */
-export function addPortfolio(prev: PortfolioTickers, name: string): PortfolioTickers {
-  if (prev[name]) return prev;
-  return { ...prev, [name]: [] };
+/** Every per-portfolio map, keyed by portfolio name. */
+export interface PortfolioMaps {
+  portfolios: PortfolioTickers;
+  quantities: PortfolioQuantities;
+  averageCosts: PortfolioAverageCosts;
+  cash: PortfolioCash;
+  transactions: PortfolioTransactions;
 }
 
-/** Sets one portfolio's entry in a per-portfolio map. */
-export function withEntry<T>(prev: Record<string, T>, key: string, value: T): Record<string, T> {
-  return { ...prev, [key]: value };
-}
-
-/** Renames a portfolio's ticker list; returns `prev` unchanged when `to` already exists. */
-export function renamePortfolioTickers(prev: PortfolioTickers, from: string, to: string): PortfolioTickers {
-  if (prev[to]) return prev;
+/** Moves `from`'s entry to `to` (appended last). Only call when `to` is not already a key. */
+function renameKey<T>(prev: Record<string, T>, from: string, to: string, fallback: T): Record<string, T> {
   const next = { ...prev };
-  const currentTickers = next[from] ?? [];
+  const value = next[from] ?? fallback;
   delete next[from];
-  next[to] = currentTickers;
+  next[to] = value;
   return next;
 }
 
-/** Moves `from`'s entry to `to` in a per-portfolio map, overwriting any entry already at `to`. */
-export function moveEntry<T>(prev: Record<string, T>, from: string, to: string, fallback: T): Record<string, T> {
-  const next = { ...prev };
-  next[to] = next[from] ?? fallback;
-  delete next[from];
-  return next;
+/**
+ * Adds an empty portfolio named `name` to every map. Returns null, changing nothing, when the
+ * name clashes with an existing portfolio, so another portfolio's data is never reset.
+ */
+export function createPortfolioIn(maps: PortfolioMaps, name: string): PortfolioMaps | null {
+  if (portfolioNameError(name, Object.keys(maps.portfolios))) return null;
+  return {
+    portfolios: { ...maps.portfolios, [name]: [] },
+    quantities: { ...maps.quantities, [name]: {} },
+    averageCosts: { ...maps.averageCosts, [name]: {} },
+    cash: { ...maps.cash, [name]: 0 },
+    transactions: { ...maps.transactions, [name]: [] },
+  };
+}
+
+/**
+ * Renames `from` to `to` in every map. Returns null, changing nothing, when `from` doesn't exist,
+ * the name is unchanged, or `to` clashes with another portfolio, so no data is ever overwritten.
+ */
+export function renamePortfolioIn(maps: PortfolioMaps, from: string, to: string): PortfolioMaps | null {
+  if (from === to || !(from in maps.portfolios)) return null;
+  if (portfolioNameError(to, Object.keys(maps.portfolios), from)) return null;
+  return {
+    portfolios: renameKey<string[]>(maps.portfolios, from, to, []),
+    quantities: renameKey(maps.quantities, from, to, {}),
+    averageCosts: renameKey(maps.averageCosts, from, to, {}),
+    cash: renameKey(maps.cash, from, to, 0),
+    transactions: renameKey<Transaction[]>(maps.transactions, from, to, []),
+  };
 }
 
 /** Removes one key from a per-portfolio map. */

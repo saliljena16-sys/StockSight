@@ -2,6 +2,7 @@ import { lazy, Suspense, useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { getStockInfo, STARTER_STOCKS, StockInfo } from './utils/mockData';
 import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
+import { calculateKeyStats } from './utils/keyStats';
 import StockCard from './components/StockCard';
 import AnalysisPanel from './components/AnalysisPanel';
 import AddStockModal from './components/AddStockModal';
@@ -18,6 +19,9 @@ import PrimaryWorkspace, { PrimaryView } from './components/PrimaryWorkspace';
 const CandlestickChart = lazy(() => import('./components/CandlestickChart'));
 const FinancialForecaster = lazy(() => import('./components/FinancialForecaster'));
 const ComparisonPanel = lazy(() => import('./components/ComparisonPanel'));
+
+// Columns shown as "—" until a real fundamentals source (earnings, dividends, book value) is wired in.
+const UNAVAILABLE_FUNDAMENTALS = ['EPS Est. Next Yr', 'Forward P/E', 'Div Paymt Date', 'Ex-Div Date', 'Div/Share', 'Fwd Ann Div Rate', 'Fwd Ann Div Yield', 'Ttl Ann Div Rate', 'Ttl Ann Div Yield', 'Price / Book'];
 
 const PanelFallback = () => <div className="flex min-h-[420px] items-center justify-center text-sm text-[var(--text-secondary)]"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading workspace…</div>;
 
@@ -39,7 +43,7 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
-  const [tableTab, setTableTab] = useState<'summary' | 'holdings' | 'fundamentals' | 'performance'>('holdings');
+  const [tableTab, setTableTab] = useState<'summary' | 'holdings' | 'keyStats' | 'performance'>('holdings');
   const [sectorFilter, setSectorFilter] = useState<string>('All');
   const [portfolioQuantities, setPortfolioQuantities] = useState<Record<string, Record<string, number>>>({});
   const [portfolioAverageCosts, setPortfolioAverageCosts] = useState<Record<string, Record<string, number>>>({});
@@ -222,28 +226,15 @@ export default function App() {
   const analysis = selectedStock ? analyzeStock(selectedStock.historicalData, selectedStock.hasRealHistory) : null;
   const cagr = selectedStock ? calculateCAGR(selectedStock.historicalData) : 0.10;
 
-  const formatCompactNumber = (value: number) => {
+  const formatCompactNumber = (value: number | null) => {
+    if (value === null) return '—';
     if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
     if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
     if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
     return value.toFixed(0);
   };
-
-  const getApproxSharesOutstanding = (ticker: string): number => {
-    const sharesByTicker: Record<string, number> = {
-      AAPL: 15.8e9,
-      MSFT: 7.4e9,
-      NVDA: 24.6e9,
-      GOOGL: 12.2e9,
-      AMZN: 10.3e9,
-      META: 3.6e9,
-      TSLA: 3.1e9,
-      JPM: 2.8e9,
-    };
-
-    return sharesByTicker[ticker.toUpperCase()] ?? 5e9;
-  };
+  const formatPrice = (value: number | null) => value === null ? '—' : value.toFixed(2);
 
   const getSectorForTicker = (ticker: string): string => {
     const sectorMap: Record<string, string> = {
@@ -276,114 +267,6 @@ export default function App() {
 
   const filteredStocks = (stocksData ?? []).filter(stock => sectorFilter === 'All' || stock.sector === sectorFilter);
   const availableSectors = Array.from(new Set((stocksData ?? []).map(stock => stock.sector).filter(Boolean)));
-
-  const getTableMetrics = (stock: StockInfo) => {
-    const recentWindow = stock.historicalData.slice(-7);
-    const quarterWindow = stock.historicalData.slice(-90);
-    const dayLow = Math.min(...recentWindow.map((point) => point.low));
-    const dayHigh = Math.max(...recentWindow.map((point) => point.high));
-    const yearLow = Math.min(...stock.historicalData.map((point) => point.low));
-    const yearHigh = Math.max(...stock.historicalData.map((point) => point.high));
-    const volume = stock.volume || recentWindow[recentWindow.length - 1]?.volume || 0;
-    const avgVolume = quarterWindow.length > 0
-      ? quarterWindow.reduce((sum, point) => sum + point.volume, 0) / quarterWindow.length
-      : 0;
-    const marketCap = stock.currentPrice * getApproxSharesOutstanding(stock.ticker);
-    const sparklinePoints = recentWindow
-      .map((point, index) => `${index * 12},${Math.max(26 - ((point.close - yearLow) / Math.max(yearHigh - yearLow, 1)) * 26, 2)}`)
-      .join(' ');
-
-    return {
-      dayLow,
-      dayHigh,
-      yearLow,
-      yearHigh,
-      volume,
-      avgVolume,
-      marketCap,
-      sparklinePoints,
-    };
-  };
-
-  const getFundamentalMetrics = (stock: StockInfo) => {
-    const metrics = getTableMetrics(stock);
-    const ticker = stock.ticker.toUpperCase();
-    const defaultProfile = {
-      epsEstimate: 9.5,
-      forwardPe: 35,
-      divPerShare: 1.05,
-      fwdAnnDivRate: 1.08,
-      ttlAnnDivRate: 1.05,
-      priceToBook: 45,
-      divPaymentDate: '2026-08-12',
-      exDivDate: '2026-08-10',
-      marketCapOffset: 1,
-    };
-
-    const profileMap: Record<string, typeof defaultProfile> = {
-      AAPL: {
-        epsEstimate: 9.58,
-        forwardPe: 34.69,
-        divPerShare: 1.05,
-        fwdAnnDivRate: 1.08,
-        ttlAnnDivRate: 1.05,
-        priceToBook: 45.16,
-        divPaymentDate: '2026-08-12',
-        exDivDate: '2026-08-10',
-        marketCapOffset: 1,
-      },
-      MSFT: {
-        epsEstimate: 11.48,
-        forwardPe: 32.13,
-        divPerShare: 3.40,
-        fwdAnnDivRate: 3.64,
-        ttlAnnDivRate: 3.64,
-        priceToBook: 15.90,
-        divPaymentDate: '2026-09-09',
-        exDivDate: '2026-09-11',
-        marketCapOffset: 1,
-      },
-      NVDA: {
-        epsEstimate: 4.41,
-        forwardPe: 52.50,
-        divPerShare: 0.28,
-        fwdAnnDivRate: 1.00,
-        ttlAnnDivRate: 0.28,
-        priceToBook: 22.56,
-        divPaymentDate: '2026-09-30',
-        exDivDate: '2026-09-10',
-        marketCapOffset: 1,
-      },
-    };
-
-    const profile = profileMap[ticker] ?? defaultProfile;
-    const priceFactor = stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.30 : ticker === 'NVDA' ? 213.90 : stock.currentPrice || 1);
-    const epsEstimate = Number((profile.epsEstimate * priceFactor).toFixed(2));
-    const forwardPe = Number((profile.forwardPe * (stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.3 : ticker === 'NVDA' ? 213.9 : stock.currentPrice))).toFixed(2));
-    const marketCap = metrics.marketCap;
-    const avgVolume = metrics.avgVolume;
-    const divPerShare = Number((profile.divPerShare * (stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.3 : ticker === 'NVDA' ? 213.9 : stock.currentPrice))).toFixed(2));
-    const fwdAnnDivRate = Number((profile.fwdAnnDivRate * (stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.3 : ticker === 'NVDA' ? 213.9 : stock.currentPrice))).toFixed(2));
-    const ttlAnnDivRate = Number((profile.ttlAnnDivRate * (stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.3 : ticker === 'NVDA' ? 213.9 : stock.currentPrice))).toFixed(2));
-    const priceToBook = Number((profile.priceToBook * (stock.currentPrice / (ticker === 'AAPL' ? 332.41 : ticker === 'MSFT' ? 490.3 : ticker === 'NVDA' ? 213.9 : stock.currentPrice))).toFixed(2));
-
-    return {
-      symbol: stock.ticker,
-      lastPrice: stock.currentPrice,
-      marketCap,
-      avgVolume,
-      epsEstimate,
-      forwardPe: Number.isFinite(forwardPe) && forwardPe > 0 ? forwardPe : profile.forwardPe,
-      divPaymentDate: profile.divPaymentDate,
-      exDivDate: profile.exDivDate,
-      divPerShare: Number.isFinite(divPerShare) && divPerShare > 0 ? divPerShare : profile.divPerShare,
-      fwdAnnDivRate: Number.isFinite(fwdAnnDivRate) && fwdAnnDivRate > 0 ? fwdAnnDivRate : profile.fwdAnnDivRate,
-      fwdAnnDivYield: stock.currentPrice > 0 ? (profile.fwdAnnDivRate / stock.currentPrice) * 100 : 0,
-      ttlAnnDivRate: Number.isFinite(ttlAnnDivRate) && ttlAnnDivRate > 0 ? ttlAnnDivRate : profile.ttlAnnDivRate,
-      ttlAnnDivYield: stock.currentPrice > 0 ? (profile.ttlAnnDivRate / stock.currentPrice) * 100 : 0,
-      priceToBook: Number.isFinite(priceToBook) && priceToBook > 0 ? priceToBook : profile.priceToBook,
-    };
-  };
 
   const getPeriodReturn = (stock: StockInfo, sessions: number) => {
     const points = stock.historicalData;
@@ -938,7 +821,7 @@ export default function App() {
               {[
                 { label: 'Summary', value: 'summary' },
                 { label: 'Holdings', value: 'holdings' },
-                { label: 'Fundamentals', value: 'fundamentals' },
+                { label: 'Key Stats', value: 'keyStats' },
                 { label: 'Performance', value: 'performance' },
               ].map((tab) => (
                 <button
@@ -1172,19 +1055,25 @@ export default function App() {
                 </table>
               )}
 
-              {tableTab === 'fundamentals' && (
+              {tableTab === 'keyStats' && (
                 <table className="data-table min-w-full border-separate border-spacing-0 text-left text-[#a2aaa4]">
-                  <caption className="border-b border-amber-300/15 bg-amber-300/[.04] px-4 py-3 text-left text-xs text-amber-200/80">Estimated demo fundamentals · values other than last price and volume are illustrative and are not live filings data.</caption>
+                  <caption className="border-b border-white/[.07] px-4 py-3 text-left text-xs leading-5 text-[var(--text-secondary)]">
+                    Last price from Finnhub quotes · market cap = last price × Finnhub shares outstanding · volume and 52-week range from Yahoo Finance daily candles.
+                    <span className="text-[var(--text-tertiary)]"> Earnings, valuation and dividend fields need a fundamentals feed that isn't connected, so they show —. Demo rows report nothing.</span>
+                  </caption>
                   <thead className="bg-black/20">
                     <tr>
-                      {['Symbol', 'Last Price', 'Market Cap', 'Avg Vol (3M)', 'EPS Est. Next Yr', 'Forward P/E', 'Div Paymt Date', 'Ex-Div Date', 'Div/Share', 'Fwd Ann Div Rate', 'Fwd Ann Div Yield', 'Ttl Ann Div Rate', 'Ttl Ann Div Yield', 'Price / Book'].map((header) => (
+                      {['Symbol', 'Last Price', 'Market Cap', 'Volume (Last Session)', 'Avg Vol (3M)', '52-Wk Low', '52-Wk High'].map((header) => (
                         <th key={header} className="border-b border-white/[.07] px-3 py-3 whitespace-nowrap">{header}</th>
+                      ))}
+                      {UNAVAILABLE_FUNDAMENTALS.map((header) => (
+                        <th key={header} title="Not available: no fundamentals data source is connected" className="border-b border-white/[.07] px-3 py-3 whitespace-nowrap text-[var(--text-tertiary)]">{header}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {stocksData.map((stock) => {
-                      const fundamentals = getFundamentalMetrics(stock);
+                      const stats = calculateKeyStats(stock);
 
                       return (
                         <tr
@@ -1193,21 +1082,21 @@ export default function App() {
                           onClick={() => setSelectedTicker(stock.ticker)}
                         >
                           <td className={`border-l-2 px-3 py-3 !text-left ${stock.ticker === selectedTicker ? 'border-lime-300' : 'border-transparent'}`}>
-                            <div className="flex items-center gap-2.5"><CompanyMark ticker={stock.ticker} size={24} /><span className="font-semibold text-white">{stock.ticker}</span></div>
+                            <div className="flex items-center gap-2.5">
+                              <CompanyMark ticker={stock.ticker} size={24} />
+                              <span className="font-semibold text-white">{stock.ticker}</span>
+                              {!stock.isLiveData && <span className="rounded-full border border-amber-300/25 px-1.5 py-0.5 text-[10px] text-amber-200/80">Demo</span>}
+                            </div>
                           </td>
-                          <td className="px-3 py-3 text-white">{stock.currentPrice.toFixed(2)}</td>
-                          <td className="px-3 py-3">{formatCompactNumber(fundamentals.marketCap)}</td>
-                          <td className="px-3 py-3">{formatCompactNumber(fundamentals.avgVolume)}</td>
-                          <td className="px-3 py-3">{fundamentals.epsEstimate.toFixed(2)}</td>
-                          <td className="px-3 py-3">{fundamentals.forwardPe.toFixed(2)}</td>
-                          <td className="px-3 py-3">{fundamentals.divPaymentDate}</td>
-                          <td className="px-3 py-3">{fundamentals.exDivDate}</td>
-                          <td className="px-3 py-3">{fundamentals.divPerShare.toFixed(2)}</td>
-                          <td className="px-3 py-3">{fundamentals.fwdAnnDivRate.toFixed(2)}</td>
-                          <td className="px-3 py-3">{fundamentals.fwdAnnDivYield.toFixed(2)}%</td>
-                          <td className="px-3 py-3">{fundamentals.ttlAnnDivRate.toFixed(2)}</td>
-                          <td className="px-3 py-3">{fundamentals.ttlAnnDivYield.toFixed(2)}%</td>
-                          <td className="px-3 py-3">{fundamentals.priceToBook.toFixed(2)}</td>
+                          <td className="px-3 py-3 text-white">{formatPrice(stats.lastPrice)}</td>
+                          <td className="px-3 py-3">{formatCompactNumber(stats.marketCap)}</td>
+                          <td className="px-3 py-3" title={stats.lastVolumeDate ? `Session of ${stats.lastVolumeDate}` : undefined}>{formatCompactNumber(stats.lastVolume)}</td>
+                          <td className="px-3 py-3">{formatCompactNumber(stats.avgVolume3M)}</td>
+                          <td className="px-3 py-3">{formatPrice(stats.week52Low)}</td>
+                          <td className="px-3 py-3">{formatPrice(stats.week52High)}</td>
+                          {UNAVAILABLE_FUNDAMENTALS.map((header) => (
+                            <td key={header} className="px-3 py-3 text-[var(--text-tertiary)]">—</td>
+                          ))}
                         </tr>
                       );
                     })}

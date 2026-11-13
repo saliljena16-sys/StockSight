@@ -1,29 +1,25 @@
-import { lazy, Suspense, useState, useEffect, useRef, type ReactNode } from 'react';
-import useSWR from 'swr';
-import { getStockInfo, STARTER_STOCKS, StockInfo } from './utils/mockData';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { analyzeStock } from './utils/technicalAnalysis';
 import { calculateKeyStats } from './utils/keyStats';
 import { formatCompactNumber, formatPrice } from './utils/format';
 import { closeToCloseReturn, yearToDateReturn } from './utils/marketMetrics';
 import { calculatePortfolioSummary, calculateSectorAllocation, getHoldingMetrics } from './utils/portfolioMetrics';
 import { getForecastInputs } from './utils/forecast';
-import { isSearchShortcut, resolveSymbolSearch } from './utils/symbolSearch';
-import { filterStocksBySector, getAvailableSectors, shouldResetSectorFilter } from './utils/sectorFilter';
-import { buildCompanyNewsUrl, toCompanyNewsItems } from './utils/news';
-import { authRedirectUrl, describeAuthError } from './utils/auth';
-import type { NewsItem } from './types/news';
-import type { PortfolioAverageCosts, PortfolioCash, PortfolioQuantities, PortfolioTransactions } from './types/portfolio';
 import type { DetailTab, PrimaryView, WatchlistTableTab, WatchlistViewMode } from './types/views';
+import { usePortfolioState } from './hooks/usePortfolioState';
+import { useStockQuotes } from './hooks/useStockQuotes';
+import { useSectorFilter } from './hooks/useSectorFilter';
+import { useAuthSync } from './hooks/useAuthSync';
+import { useStockNews } from './hooks/useStockNews';
+import { useSymbolSearch } from './hooks/useSymbolSearch';
 import StockCard from './components/StockCard';
 import AnalysisPanel from './components/AnalysisPanel';
 import AddStockModal from './components/AddStockModal';
-import { createGuestPortfolioState, DEFAULT_PORTFOLIOS, loadPortfolioState, PortfolioState, savePortfolioState } from './utils/portfolioDb';
-import { supabase } from './utils/supabase';
 import { BarChart3, Plus, RefreshCw, Activity, TrendingUp, TrendingDown, EyeOff, Wifi, WifiOff, Loader2, Search, UserRound, MoreHorizontal, Pencil, Trash2, WalletCards, Layers3, ArrowUpRight, ArrowDownRight, LineChart } from 'lucide-react';
 import LatestNewsPanel from './components/LatestNewsPanel';
 import CompanyMark from './components/CompanyMark';
 import { getCompanyMetadata } from './utils/companyMetadata';
-import AuthModal, { AuthResult } from './components/AuthModal';
+import AuthModal from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
 import PrimaryWorkspace from './components/PrimaryWorkspace';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -44,189 +40,59 @@ const LazyPanel = ({ children, resetKey }: { children: ReactNode; resetKey?: str
   </ErrorBoundary>
 );
 
-const fetcher = async (ticker: string): Promise<StockInfo> => {
-  return getStockInfo(ticker);
-};
-
 export default function App() {
-  const [selectedTicker, setSelectedTicker] = useState<string>(STARTER_STOCKS[0]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [activeTab, setActiveTab] = useState<DetailTab>('chart');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [portfolios, setPortfolios] = useState<Record<string, string[]>>(DEFAULT_PORTFOLIOS);
-  const [activePortfolio, setActivePortfolio] = useState<string>('My Watchlist');
-  const [stockNews, setStockNews] = useState<NewsItem[]>([]);
-  const [newsLoading, setNewsLoading] = useState(false);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<WatchlistViewMode>('cards');
   const [tableTab, setTableTab] = useState<WatchlistTableTab>('holdings');
-  const [sectorFilter, setSectorFilter] = useState<string>('All');
-  const [portfolioQuantities, setPortfolioQuantities] = useState<PortfolioQuantities>({});
-  const [portfolioAverageCosts, setPortfolioAverageCosts] = useState<PortfolioAverageCosts>({});
-  const [portfolioCash, setPortfolioCash] = useState<PortfolioCash>({});
-  const [portfolioTransactions, setPortfolioTransactions] = useState<PortfolioTransactions>({});
   const [editingTicker, setEditingTicker] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [globalSearch, setGlobalSearch] = useState('');
   const [primaryView, setPrimaryView] = useState<PrimaryView>('watchlist');
-  const globalSearchRef = useRef<HTMLInputElement>(null);
-  const mobileSearchRef = useRef<HTMLInputElement>(null);
-  const persistenceOwnerRef = useRef<string | null | undefined>(undefined);
 
-  const applyPortfolioState = (saved: PortfolioState) => {
-    setPortfolios(saved.portfolios);
-    setPortfolioQuantities(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.quantity]))])));
-    setPortfolioAverageCosts(Object.fromEntries(Object.entries(saved.holdings).map(([name, holdings]) => [name, Object.fromEntries(Object.entries(holdings).map(([ticker, holding]) => [ticker, holding.averageCost]))])));
-    setPortfolioCash(saved.cash);
-    setPortfolioTransactions(saved.transactions);
-    const firstPortfolio = Object.keys(saved.portfolios)[0];
-    setActivePortfolio(firstPortfolio);
-    setSelectedTicker(saved.portfolios[firstPortfolio]?.[0] ?? STARTER_STOCKS[0]);
-  };
-
-  const activeTickers = portfolios[activePortfolio] ?? [];
-
-  const { data: stocksData, isLoading, mutate } = useSWR(
-    activeTickers.length > 0 ? activeTickers : null,
-    async (keys: string[]) => {
-      const results = await Promise.all(keys.map(k => fetcher(k)));
-      setLastUpdate(new Date());
-      return results;
-    },
-    {
-      refreshInterval: 60000,
-      revalidateOnFocus: true,
-      revalidateIfStale: true,
-    }
-  );
-
-  const hasLiveData = stocksData?.some(s => s.isLiveData) ?? false;
-  const allLiveData = stocksData?.every(s => s.isLiveData) ?? false;
-
-  const addStock = (ticker: string) => {
-    const upper = ticker.toUpperCase();
-    setPortfolios(prev => {
-      const current = prev[activePortfolio] ?? [];
-      if (current.includes(upper)) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [activePortfolio]: [...current, upper]
-      };
-    });
-
-    setPortfolioQuantities(prev => ({
-      ...prev,
-      [activePortfolio]: {
-        ...(prev[activePortfolio] ?? {}),
-        [upper]: (prev[activePortfolio]?.[upper] ?? 0) + 1,
-      },
-    }));
-
-    setSelectedTicker(upper);
-  };
-
-  const updateStockQuantity = (ticker: string, nextQuantity: number) => {
-    const upper = ticker.toUpperCase();
-    const safeQuantity = Math.max(0, Number(nextQuantity) || 0);
-
-    setPortfolios(prev => {
-      const current = prev[activePortfolio] ?? [];
-      const exists = current.includes(upper);
-
-      if (safeQuantity > 0 && !exists) {
-        return {
-          ...prev,
-          [activePortfolio]: [...current, upper],
-        };
-      }
-
-      if (safeQuantity === 0 && exists) {
-        return {
-          ...prev,
-          [activePortfolio]: current.filter(item => item !== upper),
-        };
-      }
-
-      return prev;
-    });
-
-    setPortfolioQuantities(prev => {
-      const current = prev[activePortfolio] ?? {};
-      const next = { ...current };
-
-      if (safeQuantity <= 0) {
-        delete next[upper];
-        return {
-          ...prev,
-          [activePortfolio]: next,
-        };
-      }
-
-      return {
-        ...prev,
-        [activePortfolio]: {
-          ...next,
-          [upper]: safeQuantity,
-        },
-      };
-    });
-
-    setSelectedTicker(upper);
-  };
-
-  const handleShareEdit = (ticker: string) => {
-    setEditingTicker(ticker);
-  };
-
-  const removeStock = (ticker: string) => {
-    setPortfolios(prev => {
-      const current = prev[activePortfolio] ?? [];
-      const next = current.filter(t => t !== ticker);
-
-      if (selectedTicker === ticker && next.length > 0) {
-        setSelectedTicker(next[0]);
-      }
-
-      return {
-        ...prev,
-        [activePortfolio]: next
-      };
-    });
-
-    setPortfolioQuantities(prev => {
-      const current = prev[activePortfolio] ?? {};
-      const { [ticker]: _removed, ...rest } = current;
-      return {
-        ...prev,
-        [activePortfolio]: rest,
-      };
-    });
-    setPortfolioAverageCosts(prev => {
-      const current = prev[activePortfolio] ?? {};
-      const { [ticker]: _removed, ...rest } = current;
-      return { ...prev, [activePortfolio]: rest };
-    });
-  };
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await mutate();
-    setIsRefreshing(false);
-  };
+  const {
+    selectedTicker,
+    setSelectedTicker,
+    portfolios,
+    activePortfolio,
+    setActivePortfolio,
+    activeTickers,
+    portfolioQuantities,
+    portfolioAverageCosts,
+    portfolioCash,
+    portfolioTransactions,
+    applyPortfolioState,
+    addStock,
+    removeStock,
+    saveHolding,
+    setCashBalance,
+    createPortfolio,
+    renamePortfolio,
+    deletePortfolio,
+  } = usePortfolioState();
+  const { stocksData, isLoading, lastUpdate, isRefreshing, refresh: handleRefresh, hasLiveData, allLiveData } = useStockQuotes(activeTickers);
+  const { sectorFilter, setSectorFilter, filteredStocks, availableSectors } = useSectorFilter(stocksData);
+  const { userEmail, signIn: handleAuth, resendConfirmation: handleResendConfirmation, signOut: handleSignOut } = useAuthSync({
+    portfolios,
+    quantities: portfolioQuantities,
+    averageCosts: portfolioAverageCosts,
+    cash: portfolioCash,
+    transactions: portfolioTransactions,
+    applyPortfolioState,
+    onNotice: setNotice,
+  });
 
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
   const analysis = selectedStock ? analyzeStock(selectedStock.historicalData, selectedStock.hasRealHistory) : null;
   const { cagr: forecastCagr, unavailableReason: forecastUnavailableReason } = getForecastInputs(selectedStock);
-
-  const filteredStocks = filterStocksBySector(stocksData, sectorFilter);
-  const availableSectors = getAvailableSectors(stocksData);
+  const { stockNews, newsLoading } = useStockNews(selectedStock?.ticker);
+  const {
+    query: globalSearch,
+    setQuery: setGlobalSearch,
+    submit: handleGlobalSearch,
+    desktopInputRef: globalSearchRef,
+    mobileInputRef: mobileSearchRef,
+  } = useSymbolSearch({ activeTickers, onSelect: setSelectedTicker, onAdd: addStock });
 
   const {
     portfolioValue,
@@ -243,111 +109,14 @@ export default function App() {
   } = calculatePortfolioSummary(stocksData ?? [], portfolioQuantities[activePortfolio], portfolioAverageCosts[activePortfolio], portfolioCash[activePortfolio]);
   const sectorAllocation = calculateSectorAllocation(holdingStocks, portfolioQuantities[activePortfolio]);
 
-  useEffect(() => {
-    if (shouldResetSectorFilter(stocksData, sectorFilter)) {
-      setSectorFilter('All');
-    }
-  }, [stocksData, sectorFilter]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const hydrateSession = async () => {
-      const currentUser = supabase ? (await supabase.auth.getSession()).data.session?.user ?? null : null;
-      const nextUserId = currentUser?.id ?? null;
-      const saved = await loadPortfolioState(nextUserId);
-      if (!isMounted) return;
-
-      persistenceOwnerRef.current = nextUserId;
-      setUserId(nextUserId);
-      setUserEmail(currentUser?.email ?? null);
-      if (saved && Object.keys(saved.portfolios).length > 0) {
-        applyPortfolioState(saved);
-      }
-
-      setIsHydrated(true);
-    };
-
-    hydrateSession();
-
-    const { data: authListener } = supabase
-      ? supabase.auth.onAuthStateChange((_event, session) => {
-          const currentUser = session?.user ?? null;
-          setUserId(currentUser?.id ?? null);
-          setUserEmail(currentUser?.email ?? null);
-          void hydrateSession();
-        })
-      : { data: { subscription: { unsubscribe: () => undefined } } };
-
-    return () => {
-      isMounted = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isHydrated || persistenceOwnerRef.current !== userId) return;
-    const holdings = Object.fromEntries(Object.keys(portfolios).map(name => [name, Object.fromEntries(Object.entries(portfolioQuantities[name] ?? {}).map(([ticker, quantity]) => [ticker, { quantity, averageCost: portfolioAverageCosts[name]?.[ticker] ?? 0 }]))]));
-    void savePortfolioState({ portfolios, holdings, cash: portfolioCash, transactions: portfolioTransactions }, userId);
-  }, [portfolios, portfolioQuantities, portfolioAverageCosts, portfolioCash, portfolioTransactions, isHydrated, userId]);
-
-  const handleAuth = async (mode: 'signin' | 'signup', email: string, password: string): Promise<AuthResult> => {
-    if (!supabase) {
-      return { error: 'Cloud sync is not configured for this deployment.' };
-    }
-    const { data, error } = mode === 'signin'
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: authRedirectUrl(window.location.origin) } });
-    if (error) {
-      return { error: describeAuthError(error.message) };
-    }
-    if (mode === 'signup' && !data.session) {
-      return { confirmationRequired: true };
-    }
-    setUserId(data.user?.id ?? null);
-    setUserEmail(data.user?.email ?? null);
-    setNotice('Portfolio sync is active.');
-    return {};
-  };
-
-  const handleResendConfirmation = async (email: string): Promise<string | null> => {
-    if (!supabase) return 'Cloud sync is not configured.';
-    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: authRedirectUrl(window.location.origin) } });
-    return error?.message ?? null;
-  };
-
-  const handleSignOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    const guestState = createGuestPortfolioState();
-    persistenceOwnerRef.current = null;
-    setUserId(null);
-    setUserEmail(null);
-    applyPortfolioState(guestState);
-    await savePortfolioState(guestState, null);
-    setNotice('Signed out. Showing a fresh selection of popular stocks.');
+  const handleShareEdit = (ticker: string) => {
+    setEditingTicker(ticker);
   };
 
   const handleCreatePortfolio = () => {
     const nextName = window.prompt('Create a portfolio name', `Portfolio ${Object.keys(portfolios).length + 1}`);
     if (!nextName || !nextName.trim()) return;
-
-    const cleaned = nextName.trim();
-    setPortfolios(prev => {
-      if (prev[cleaned]) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [cleaned]: []
-      };
-    });
-    setPortfolioQuantities(prev => ({ ...prev, [cleaned]: {} }));
-    setPortfolioAverageCosts(prev => ({ ...prev, [cleaned]: {} }));
-    setPortfolioCash(prev => ({ ...prev, [cleaned]: 0 }));
-    setPortfolioTransactions(prev => ({ ...prev, [cleaned]: [] }));
-    setActivePortfolio(cleaned);
+    createPortfolio(nextName.trim());
   };
 
   const handleRenamePortfolio = () => {
@@ -357,24 +126,7 @@ export default function App() {
 
     const cleaned = nextName.trim();
     if (cleaned === currentName) return;
-
-    setPortfolios(prev => {
-      if (prev[cleaned]) {
-        return prev;
-      }
-
-      const next = { ...prev };
-      const currentTickers = next[currentName] ?? [];
-      delete next[currentName];
-      next[cleaned] = currentTickers;
-      return next;
-    });
-    setPortfolioQuantities(prev => { const next = { ...prev }; next[cleaned] = next[currentName] ?? {}; delete next[currentName]; return next; });
-    setPortfolioAverageCosts(prev => { const next = { ...prev }; next[cleaned] = next[currentName] ?? {}; delete next[currentName]; return next; });
-    setPortfolioCash(prev => { const next = { ...prev, [cleaned]: prev[currentName] ?? 0 }; delete next[currentName]; return next; });
-    setPortfolioTransactions(prev => { const next = { ...prev, [cleaned]: prev[currentName] ?? [] }; delete next[currentName]; return next; });
-
-    setActivePortfolio(cleaned);
+    renamePortfolio(currentName, cleaned);
   };
 
   const handleDeletePortfolio = () => {
@@ -385,111 +137,7 @@ export default function App() {
 
     const confirmed = window.confirm(`Delete the portfolio "${activePortfolio}"?`);
     if (!confirmed) return;
-
-    const nextPortfolios = { ...portfolios };
-    delete nextPortfolios[activePortfolio];
-    const remaining = Object.keys(nextPortfolios);
-    setPortfolios(nextPortfolios);
-    setPortfolioQuantities(prev => { const next = { ...prev }; delete next[activePortfolio]; return next; });
-    setPortfolioAverageCosts(prev => { const next = { ...prev }; delete next[activePortfolio]; return next; });
-    setPortfolioCash(prev => { const next = { ...prev }; delete next[activePortfolio]; return next; });
-    setPortfolioTransactions(prev => { const next = { ...prev }; delete next[activePortfolio]; return next; });
-    setActivePortfolio(remaining[0] ?? 'My Watchlist');
-  };
-
-  useEffect(() => {
-    const currentPortfolioTickers = portfolios[activePortfolio] ?? [];
-    if (currentPortfolioTickers.length > 0 && !currentPortfolioTickers.includes(selectedTicker)) {
-      setSelectedTicker(currentPortfolioTickers[0]);
-    }
-  }, [activePortfolio, portfolios, selectedTicker]);
-
-  useEffect(() => {
-    setPortfolioQuantities(prev => {
-      const next = { ...prev };
-      Object.keys(portfolios).forEach((portfolioName) => {
-        const current = portfolios[portfolioName] ?? [];
-        next[portfolioName] = { ...(next[portfolioName] ?? {}) };
-
-        current.forEach((ticker) => {
-          if (!next[portfolioName][ticker]) {
-            next[portfolioName][ticker] = 1;
-          }
-        });
-
-        Object.keys(next[portfolioName]).forEach((ticker) => {
-          if (!current.includes(ticker)) {
-            delete next[portfolioName][ticker];
-          }
-        });
-      });
-
-      Object.keys(next).forEach((portfolioName) => {
-        if (!portfolios[portfolioName]) {
-          delete next[portfolioName];
-        }
-      });
-
-      return next;
-    });
-  }, [portfolios]);
-
-  useEffect(() => {
-    if (!selectedStock) {
-      setStockNews([]);
-      return;
-    }
-
-    const fetchNews = async () => {
-      const token = import.meta.env.VITE_FINNHUB_API_KEY;
-      if (!token) {
-        setStockNews([]);
-        return;
-      }
-
-      setNewsLoading(true);
-
-      try {
-        const response = await fetch(buildCompanyNewsUrl(selectedStock.ticker, token));
-
-        if (!response.ok) {
-          throw new Error(`News request failed: ${response.status}`);
-        }
-
-        const items = await response.json();
-        setStockNews(toCompanyNewsItems(items));
-      } catch (error) {
-        console.warn('Unable to load stock news:', error);
-        setStockNews([]);
-      } finally {
-        setNewsLoading(false);
-      }
-    };
-
-    fetchNews();
-  }, [selectedStock?.ticker]);
-
-  useEffect(() => {
-    const handleCommandSearch = (event: KeyboardEvent) => {
-      if (isSearchShortcut(event)) {
-        event.preventDefault();
-        (window.innerWidth < 1024 ? mobileSearchRef.current : globalSearchRef.current)?.focus();
-      }
-    };
-
-    window.addEventListener('keydown', handleCommandSearch);
-    return () => window.removeEventListener('keydown', handleCommandSearch);
-  }, []);
-
-  const handleGlobalSearch = () => {
-    const action = resolveSymbolSearch(globalSearch, activeTickers);
-    if (action.type === 'none') return;
-    if (action.type === 'select') {
-      setSelectedTicker(action.ticker);
-    } else {
-      addStock(action.ticker);
-    }
-    setGlobalSearch('');
+    deletePortfolio(activePortfolio);
   };
 
   return (
@@ -798,7 +446,7 @@ export default function App() {
 
                   <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_2fr]">
                     <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Total return</p><p className={`mt-2 font-mono text-lg ${portfolioTotalGain >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{portfolioTotalGain >= 0 ? '+' : '-'}${Math.abs(portfolioTotalGain).toFixed(2)} ({portfolioTotalGainPercent >= 0 ? '+' : ''}{portfolioTotalGainPercent.toFixed(2)}%)</p></div>
-                    <label className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><span className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Cash position</span><span className="mt-2 flex items-center font-mono text-lg text-white">$<input aria-label="Cash position" type="number" min="0" step="0.01" value={cashBalance} onChange={event => setPortfolioCash(prev => ({ ...prev, [activePortfolio]: Math.max(0, Number(event.target.value) || 0) }))} className="min-w-0 flex-1 bg-transparent pl-1 text-white outline-none" /></span></label>
+                    <label className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><span className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Cash position</span><span className="mt-2 flex items-center font-mono text-lg text-white">$<input aria-label="Cash position" type="number" min="0" step="0.01" value={cashBalance} onChange={event => setCashBalance(event.target.value)} className="min-w-0 flex-1 bg-transparent pl-1 text-white outline-none" /></span></label>
                     <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Sector allocation by market value</p><div className="mt-3 flex h-2 overflow-hidden rounded-full bg-white/[.05]">{sectorAllocation.map(([sector, value], index) => <span key={sector} title={`${sector}: ${portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(1) : 0}%`} style={{ width: `${portfolioValue > 0 ? (value / portfolioValue) * 100 : 0}%`, backgroundColor: ['#b7f34a', '#9b8ce8', '#e4b75c', '#54d99a', '#f07878'][index % 5] }} />)}</div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{sectorAllocation.map(([sector, value]) => <span key={sector} className="text-[11px] text-[var(--text-secondary)]">{sector} {portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(0) : 0}%</span>)}</div></div>
                   </div>
 
@@ -1303,16 +951,7 @@ export default function App() {
         onClose={() => setEditingTicker(null)}
         onSave={(quantity, averageCost) => {
           if (!editingTicker) return;
-          const previousQuantity = portfolioQuantities[activePortfolio]?.[editingTicker] ?? 0;
-          const delta = quantity - previousQuantity;
-          if (Math.abs(delta) > 0.000001) {
-            setPortfolioTransactions(prev => ({
-              ...prev,
-              [activePortfolio]: [{ id: `${Date.now()}-${editingTicker}`, ticker: editingTicker, type: delta > 0 ? 'buy' : 'sell', quantity: Math.abs(delta), price: averageCost, date: new Date().toISOString() }, ...(prev[activePortfolio] ?? [])],
-            }));
-          }
-          updateStockQuantity(editingTicker, quantity);
-          setPortfolioAverageCosts(prev => ({ ...prev, [activePortfolio]: { ...(prev[activePortfolio] ?? {}), [editingTicker]: averageCost } }));
+          saveHolding(editingTicker, quantity, averageCost);
           setNotice(`${editingTicker} holding updated.`);
         }}
       />

@@ -44,11 +44,25 @@ body {
   background-size: auto, 64px 64px, 64px 64px;
 }
 
-button, input, select { font: inherit; }
-button { cursor: pointer; }
+/* Element defaults live in the base layer so Tailwind utilities (text-sm, font-semibold,
+   transition-*, ...) on buttons and inputs can override them. Unlayered rules always beat
+   layered ones, which previously forced every button to inherit its parent's font size. */
+@layer base {
+  button, input, select { font: inherit; }
+  button { cursor: pointer; }
 
-button, a {
-  -webkit-tap-highlight-color: transparent;
+  button, a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, input, select {
+    transition: color var(--ease-out), background-color var(--ease-out), border-color var(--ease-out), opacity var(--ease-out);
+  }
+}
+
+/* iOS Safari zooms the page when a focused form control is smaller than 16px. */
+@media (max-width: 639px) {
+  input, select, textarea { font-size: 16px !important; }
 }
 
 .mobile-scroll {
@@ -59,10 +73,6 @@ button, a {
 
 .mobile-scroll::-webkit-scrollbar {
   display: none;
-}
-
-button, a, input, select {
-  transition: color var(--ease-out), background-color var(--ease-out), border-color var(--ease-out), opacity var(--ease-out);
 }
 
 :focus-visible {

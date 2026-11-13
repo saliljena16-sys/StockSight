@@ -1,20 +1,29 @@
-# StockSight Quick Setup Script
-# Run this ONCE to create all project files
+# StockSight setup helper
+#
+# Run from the root of a clone of the repository:
+#   git clone https://github.com/saliljena16-sys/StockSight.git
+#   cd StockSight
+#   .\setup.ps1
 
-Write-Host "Setting up StockSight..." -ForegroundColor Cyan
+$repoUrl = "https://github.com/saliljena16-sys/StockSight"
+$port = 4000  # matches the --port flag in package.json's dev/start/preview scripts
 
-# Create directory structure
-New-Item -ItemType Directory -Force -Path src\components | Out-Null
-New-Item -ItemType Directory -Force -Path src\utils | Out-Null
+Write-Host "Setting up StockSight ($repoUrl)" -ForegroundColor Cyan
 
-# Download all files from the project
-$baseUrl = "https://raw.githubusercontent.com/YOUR_USERNAME/stocksight/main"
+if (-not (Test-Path "package.json")) {
+    Write-Host "package.json not found. Run this script from the root of a clone of $repoUrl" -ForegroundColor Red
+    exit 1
+}
 
-# For now, let's use a simpler approach - copy from current directory
-Write-Host "Project files should already be in this directory." -ForegroundColor Yellow
-Write-Host "If you see src\, index.html, and package.json, you're good!" -ForegroundColor Yellow
+if (Test-Path ".env") {
+    Write-Host ".env already exists - leaving it unchanged." -ForegroundColor Yellow
+} else {
+    Copy-Item ".env.example" ".env"
+    Write-Host "Created .env from .env.example. Add your Finnhub key (and Supabase keys for cloud sync)." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Green
 Write-Host "1. npm install" -ForegroundColor White
 Write-Host "2. npm run dev" -ForegroundColor White
-Write-Host "3. Open http://localhost:3000" -ForegroundColor White
+Write-Host "3. Open http://localhost:$port" -ForegroundColor White

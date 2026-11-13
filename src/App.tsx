@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useRef, type ReactNode } from 'react';
 import useSWR from 'swr';
 import { getStockInfo, STARTER_STOCKS, StockInfo } from './utils/mockData';
 import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
@@ -15,6 +15,7 @@ import { getCompanyMetadata } from './utils/companyMetadata';
 import AuthModal, { AuthResult } from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
 import PrimaryWorkspace, { PrimaryView } from './components/PrimaryWorkspace';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const CandlestickChart = lazy(() => import('./components/CandlestickChart'));
 const FinancialForecaster = lazy(() => import('./components/FinancialForecaster'));
@@ -24,6 +25,13 @@ const ComparisonPanel = lazy(() => import('./components/ComparisonPanel'));
 const UNAVAILABLE_FUNDAMENTALS = ['EPS Est. Next Yr', 'Forward P/E', 'Div Paymt Date', 'Ex-Div Date', 'Div/Share', 'Fwd Ann Div Rate', 'Fwd Ann Div Yield', 'Ttl Ann Div Rate', 'Ttl Ann Div Yield', 'Price / Book'];
 
 const PanelFallback = () => <div className="flex min-h-[420px] items-center justify-center text-sm text-[var(--text-secondary)]"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading workspace…</div>;
+
+/** Lazy panels get their own boundary, so a failed chunk replaces one section, not the whole page. */
+const LazyPanel = ({ children, resetKey }: { children: ReactNode; resetKey?: string }) => (
+  <ErrorBoundary variant="panel" resetKey={resetKey}>
+    <Suspense fallback={<PanelFallback />}>{children}</Suspense>
+  </ErrorBoundary>
+);
 
 const fetcher = async (ticker: string): Promise<StockInfo> => {
   return getStockInfo(ticker);
@@ -224,7 +232,17 @@ export default function App() {
 
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
   const analysis = selectedStock ? analyzeStock(selectedStock.historicalData, selectedStock.hasRealHistory) : null;
-  const cagr = selectedStock ? calculateCAGR(selectedStock.historicalData) : 0.10;
+  // Only forecast from real history; demo series and short histories get an explicit empty state.
+  const forecastCagr = selectedStock?.isLiveData && selectedStock.hasRealHistory
+    ? calculateCAGR(selectedStock.historicalData)
+    : null;
+  const forecastUnavailableReason = !selectedStock || forecastCagr
+    ? undefined
+    : !selectedStock.isLiveData
+      ? 'Showing demo data: the price series is simulated.'
+      : !selectedStock.hasRealHistory
+        ? selectedStock.historyUnavailableReason ?? 'Daily price history is unavailable.'
+        : `Only ${selectedStock.historicalData.length} trading sessions of history are available.`;
 
   const formatCompactNumber = (value: number | null) => {
     if (value === null) return '—';
@@ -660,7 +678,7 @@ export default function App() {
               <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-white/[.1] bg-white/[.035] px-1.5 py-0.5 font-sans text-[10px] text-[var(--text-tertiary)]">Ctrl K</kbd>
             </div>
 
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
               <div className="hidden items-center gap-2 md:flex">
                 {hasLiveData ? (
                   <>
@@ -690,20 +708,21 @@ export default function App() {
               <button
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="hidden h-10 w-10 place-items-center rounded-[8px] border border-white/[.1] bg-white/[.025] hover:bg-white/[.06] disabled:opacity-50 md:grid"
+                aria-label="Refresh data"
+                className="grid h-10 w-10 place-items-center rounded-[8px] border border-white/[.1] bg-white/[.025] hover:bg-white/[.06] disabled:opacity-50"
                 title="Refresh data"
               >
                 <RefreshCw className={`w-4 h-4 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
 
-              <button onClick={userEmail ? handleSignOut : () => setShowAuthModal(true)} aria-label={userEmail ? `Account: ${userEmail}. Sign out` : 'Sign in'} title={userEmail ?? 'Sign in'} className="hidden h-10 w-10 place-items-center rounded-full border border-white/[.16] bg-white/[.035] text-[var(--text-secondary)] hover:border-white/25 hover:text-white sm:grid">
+              <button onClick={userEmail ? handleSignOut : () => setShowAuthModal(true)} aria-label={userEmail ? `Account: ${userEmail}. Sign out` : 'Sign in'} title={userEmail ?? 'Sign in'} className="grid h-10 w-10 place-items-center rounded-full border border-white/[.16] bg-white/[.035] text-[var(--text-secondary)] hover:border-white/25 hover:text-white">
                 {userEmail ? <span className="text-xs font-semibold text-white">{userEmail.charAt(0).toUpperCase()}</span> : <UserRound className="h-4 w-4" />}
               </button>
 
               <button
                 onClick={() => setShowAddModal(true)}
                 aria-label="Add stock"
-                className="flex h-10 items-center gap-2 rounded-[8px] bg-lime-300 px-3 text-sm font-semibold text-[#10140f] hover:bg-lime-200 sm:px-4"
+                className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-[8px] bg-lime-300 px-0 text-sm font-semibold text-[#10140f] hover:bg-lime-200 sm:px-4"
               >
                 <Plus className="w-4 h-4" />
                 <span className="hidden sm:inline">Add Stock</span>
@@ -713,9 +732,9 @@ export default function App() {
         </div>
       </header>
 
-      <nav className="mobile-scroll sticky top-16 z-30 grid grid-cols-5 overflow-x-auto border-b border-white/[.08] bg-[#090d0f]/95 px-2 backdrop-blur-xl sm:top-[72px] sm:px-4 xl:hidden" aria-label="Primary navigation">
+      <nav className="mobile-scroll sticky top-16 z-30 flex overflow-x-auto border-b border-white/[.08] bg-[#090d0f]/95 px-1 backdrop-blur-xl sm:top-[72px] sm:px-4 xl:hidden" aria-label="Primary navigation">
         {([['Watchlist', 'watchlist'], ['Markets', 'markets'], ['Screeners', 'screeners'], ['News', 'news'], ['Analytics', 'analytics']] as Array<[string, PrimaryView]>).map(([label, view]) => (
-          <button key={view} onClick={() => setPrimaryView(view)} aria-current={primaryView === view ? 'page' : undefined} className={`min-h-11 min-w-0 border-b-2 px-1 text-[11px] font-medium min-[380px]:text-xs sm:px-4 sm:text-sm ${primaryView === view ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)]'}`}>{label}</button>
+          <button key={view} type="button" onClick={() => setPrimaryView(view)} aria-current={primaryView === view ? 'page' : undefined} className={`min-h-11 flex-1 shrink-0 whitespace-nowrap border-b-2 px-1.5 text-xs font-medium min-[380px]:px-2.5 min-[380px]:text-[13px] sm:px-4 sm:text-sm ${primaryView === view ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}>{label}</button>
         ))}
       </nav>
 
@@ -817,7 +836,7 @@ export default function App() {
 
         {primaryView === 'watchlist' && stocksData && (
           <div className="mb-5 flex flex-col gap-3 border-b border-white/[.08] sm:flex-row sm:items-end sm:justify-between">
-            <nav className="mobile-scroll flex items-center gap-5 overflow-x-auto" aria-label="Portfolio views">
+            <nav className="mobile-scroll flex items-center gap-3.5 overflow-x-auto min-[380px]:gap-5" aria-label="Portfolio views">
               {[
                 { label: 'Summary', value: 'summary' },
                 { label: 'Holdings', value: 'holdings' },
@@ -831,8 +850,8 @@ export default function App() {
                     setViewMode('table');
                     setActiveTab('chart');
                   }}
-                  aria-selected={viewMode === 'table' && tableTab === tab.value}
-                  className={`min-h-11 whitespace-nowrap border-b-2 text-sm font-medium ${viewMode === 'table' && tableTab === tab.value ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}
+                  aria-pressed={viewMode === 'table' && tableTab === tab.value}
+                  className={`min-h-11 whitespace-nowrap border-b-2 text-[13px] font-medium min-[380px]:text-sm ${viewMode === 'table' && tableTab === tab.value ? 'border-lime-300 text-white' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}
                 >
                   {tab.label}
                 </button>
@@ -1158,7 +1177,7 @@ export default function App() {
             </div>
             <p className="hidden sm:block text-xs text-[#69716b]">Select a symbol to inspect</p>
           </div>
-          <div className="mb-6 grid min-w-0 grid-cols-1 gap-3 min-[380px]:grid-cols-2 sm:mb-8 xl:grid-cols-4">
+          <div className="mb-6 grid min-w-0 grid-cols-1 gap-3 min-[520px]:grid-cols-2 sm:mb-8 xl:grid-cols-4">
             {stocksData.map((stock) => {
               const stockAnalysis = analyzeStock(stock.historicalData, stock.hasRealHistory);
               return (
@@ -1301,12 +1320,12 @@ export default function App() {
                       </p>
                     </div>
                   </div>
-                  <Suspense fallback={<PanelFallback />}><CandlestickChart
+                  <LazyPanel resetKey={selectedStock.ticker}><CandlestickChart
                       data={selectedStock.historicalData}
                       analysis={analysis}
                       ticker={selectedStock.ticker}
                       unavailableReason={selectedStock.historyUnavailableReason}
-                    /></Suspense>
+                    /></LazyPanel>
 
                   <div className="hidden">
                     <div className="flex items-center justify-between mb-3">
@@ -1369,13 +1388,13 @@ export default function App() {
               )}
 
               {activeTab === 'forecast' && (
-                <Suspense fallback={<PanelFallback />}><FinancialForecaster
-                  cagr={cagr}
+                <LazyPanel resetKey={selectedStock.ticker}><FinancialForecaster
+                  cagr={forecastCagr}
                   ticker={selectedStock.ticker}
-                  isLiveData={selectedStock.isLiveData}
-                /></Suspense>
+                  unavailableReason={forecastUnavailableReason}
+                /></LazyPanel>
               )}
-              {activeTab === 'compare' && <Suspense fallback={<PanelFallback />}><ComparisonPanel stocks={stocksData ?? []} /></Suspense>}
+              {activeTab === 'compare' && <LazyPanel><ComparisonPanel stocks={stocksData ?? []} /></LazyPanel>}
             </div>
             </section>
             <LatestNewsPanel ticker={selectedStock.ticker} items={stockNews} loading={newsLoading} />

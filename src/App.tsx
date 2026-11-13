@@ -1,8 +1,19 @@
 import { lazy, Suspense, useState, useEffect, useRef, type ReactNode } from 'react';
 import useSWR from 'swr';
 import { getStockInfo, STARTER_STOCKS, StockInfo } from './utils/mockData';
-import { analyzeStock, calculateCAGR } from './utils/technicalAnalysis';
+import { analyzeStock } from './utils/technicalAnalysis';
 import { calculateKeyStats } from './utils/keyStats';
+import { formatCompactNumber, formatPrice } from './utils/format';
+import { closeToCloseReturn, yearToDateReturn } from './utils/marketMetrics';
+import { calculatePortfolioSummary, calculateSectorAllocation, getHoldingMetrics } from './utils/portfolioMetrics';
+import { getForecastInputs } from './utils/forecast';
+import { isSearchShortcut, resolveSymbolSearch } from './utils/symbolSearch';
+import { filterStocksBySector, getAvailableSectors, shouldResetSectorFilter } from './utils/sectorFilter';
+import { buildCompanyNewsUrl, toCompanyNewsItems } from './utils/news';
+import { authRedirectUrl, describeAuthError } from './utils/auth';
+import type { NewsItem } from './types/news';
+import type { PortfolioAverageCosts, PortfolioCash, PortfolioQuantities, PortfolioTransactions } from './types/portfolio';
+import type { DetailTab, PrimaryView, WatchlistTableTab, WatchlistViewMode } from './types/views';
 import StockCard from './components/StockCard';
 import AnalysisPanel from './components/AnalysisPanel';
 import AddStockModal from './components/AddStockModal';
@@ -14,7 +25,7 @@ import CompanyMark from './components/CompanyMark';
 import { getCompanyMetadata } from './utils/companyMetadata';
 import AuthModal, { AuthResult } from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
-import PrimaryWorkspace, { PrimaryView } from './components/PrimaryWorkspace';
+import PrimaryWorkspace from './components/PrimaryWorkspace';
 import ErrorBoundary from './components/ErrorBoundary';
 
 const CandlestickChart = lazy(() => import('./components/CandlestickChart'));
@@ -41,22 +52,22 @@ export default function App() {
   const [selectedTicker, setSelectedTicker] = useState<string>(STARTER_STOCKS[0]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
-  const [activeTab, setActiveTab] = useState<'chart' | 'analysis' | 'forecast' | 'compare'>('chart');
+  const [activeTab, setActiveTab] = useState<DetailTab>('chart');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [portfolios, setPortfolios] = useState<Record<string, string[]>>(DEFAULT_PORTFOLIOS);
   const [activePortfolio, setActivePortfolio] = useState<string>('My Watchlist');
-  const [stockNews, setStockNews] = useState<Array<{ headline: string; summary: string; url: string; source: string; datetime: number; image?: string }>>([]);
+  const [stockNews, setStockNews] = useState<NewsItem[]>([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
-  const [tableTab, setTableTab] = useState<'summary' | 'holdings' | 'keyStats' | 'performance'>('holdings');
+  const [viewMode, setViewMode] = useState<WatchlistViewMode>('cards');
+  const [tableTab, setTableTab] = useState<WatchlistTableTab>('holdings');
   const [sectorFilter, setSectorFilter] = useState<string>('All');
-  const [portfolioQuantities, setPortfolioQuantities] = useState<Record<string, Record<string, number>>>({});
-  const [portfolioAverageCosts, setPortfolioAverageCosts] = useState<Record<string, Record<string, number>>>({});
-  const [portfolioCash, setPortfolioCash] = useState<Record<string, number>>({});
-  const [portfolioTransactions, setPortfolioTransactions] = useState<Record<string, Array<{ id: string; ticker: string; type: 'buy' | 'sell'; quantity: number; price: number; date: string }>>>({});
+  const [portfolioQuantities, setPortfolioQuantities] = useState<PortfolioQuantities>({});
+  const [portfolioAverageCosts, setPortfolioAverageCosts] = useState<PortfolioAverageCosts>({});
+  const [portfolioCash, setPortfolioCash] = useState<PortfolioCash>({});
+  const [portfolioTransactions, setPortfolioTransactions] = useState<PortfolioTransactions>({});
   const [editingTicker, setEditingTicker] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -117,26 +128,6 @@ export default function App() {
         [upper]: (prev[activePortfolio]?.[upper] ?? 0) + 1,
       },
     }));
-
-    setSelectedTicker(upper);
-  };
-
-  const handleQuickAdd = (ticker: string) => {
-    const upper = ticker.toUpperCase();
-    setPortfolioQuantities(prev => ({
-      ...prev,
-      [activePortfolio]: {
-        ...(prev[activePortfolio] ?? {}),
-        [upper]: (prev[activePortfolio]?.[upper] ?? 0) + 1,
-      },
-    }));
-
-    if (!activeTickers.includes(upper)) {
-      setPortfolios(prev => ({
-        ...prev,
-        [activePortfolio]: [...(prev[activePortfolio] ?? []), upper],
-      }));
-    }
 
     setSelectedTicker(upper);
   };
@@ -232,151 +223,31 @@ export default function App() {
 
   const selectedStock = stocksData?.find(s => s.ticker === selectedTicker);
   const analysis = selectedStock ? analyzeStock(selectedStock.historicalData, selectedStock.hasRealHistory) : null;
-  // Only forecast from real history; demo series and short histories get an explicit empty state.
-  const forecastCagr = selectedStock?.isLiveData && selectedStock.hasRealHistory
-    ? calculateCAGR(selectedStock.historicalData)
-    : null;
-  const forecastUnavailableReason = !selectedStock || forecastCagr
-    ? undefined
-    : !selectedStock.isLiveData
-      ? 'Showing demo data: the price series is simulated.'
-      : !selectedStock.hasRealHistory
-        ? selectedStock.historyUnavailableReason ?? 'Daily price history is unavailable.'
-        : `Only ${selectedStock.historicalData.length} trading sessions of history are available.`;
+  const { cagr: forecastCagr, unavailableReason: forecastUnavailableReason } = getForecastInputs(selectedStock);
 
-  const formatCompactNumber = (value: number | null) => {
-    if (value === null) return '—';
-    if (value >= 1_000_000_000_000) return `${(value / 1_000_000_000_000).toFixed(2)}T`;
-    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`;
-    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-    if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`;
-    return value.toFixed(0);
-  };
-  const formatPrice = (value: number | null) => value === null ? '—' : value.toFixed(2);
+  const filteredStocks = filterStocksBySector(stocksData, sectorFilter);
+  const availableSectors = getAvailableSectors(stocksData);
 
-  const getSectorForTicker = (ticker: string): string => {
-    const sectorMap: Record<string, string> = {
-      AAPL: 'Technology',
-      MSFT: 'Technology',
-      NVDA: 'Technology',
-      GOOGL: 'Communication Services',
-      AMZN: 'Consumer Discretionary',
-      META: 'Communication Services',
-      TSLA: 'Automotive',
-      JPM: 'Financial Services',
-      XOM: 'Energy',
-      CVX: 'Energy',
-      SHEL: 'Energy',
-      SLB: 'Energy',
-      KO: 'Consumer Staples',
-      PEP: 'Consumer Staples',
-      WMT: 'Consumer Staples',
-      JNJ: 'Healthcare',
-      UNH: 'Healthcare',
-      PG: 'Consumer Staples',
-      DIS: 'Communication Services',
-      NFLX: 'Communication Services',
-      IBM: 'Technology',
-      AMD: 'Technology',
-    };
-
-    return sectorMap[ticker.toUpperCase()] ?? 'Unknown';
-  };
-
-  const filteredStocks = (stocksData ?? []).filter(stock => sectorFilter === 'All' || stock.sector === sectorFilter);
-  const availableSectors = Array.from(new Set((stocksData ?? []).map(stock => stock.sector).filter(Boolean)));
-
-  const getPeriodReturn = (stock: StockInfo, sessions: number) => {
-    const points = stock.historicalData;
-    if (points.length < 2) return 0;
-    const end = points[points.length - 1].close;
-    const start = points[Math.max(0, points.length - 1 - sessions)].close;
-    return start > 0 ? ((end - start) / start) * 100 : 0;
-  };
-
-  const portfolioValue = (stocksData ?? []).reduce((total, stock) => {
-    const quantity = portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0;
-    return total + (quantity > 0 ? stock.currentPrice * quantity : 0);
-  }, 0);
-  const cashBalance = portfolioCash[activePortfolio] ?? 0;
-  const totalPortfolioValue = portfolioValue + cashBalance;
-  const portfolioCostBasis = (stocksData ?? []).reduce((total, stock) => {
-    const quantity = portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0;
-    const averageCost = portfolioAverageCosts[activePortfolio]?.[stock.ticker] ?? stock.currentPrice;
-    return total + quantity * averageCost;
-  }, 0);
-  const portfolioTotalGain = portfolioValue - portfolioCostBasis;
-  const portfolioTotalGainPercent = portfolioCostBasis > 0 ? (portfolioTotalGain / portfolioCostBasis) * 100 : 0;
-
-  const holdingStocks = (stocksData ?? []).filter(stock => (portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0) > 0);
-  const portfolioDayChange = holdingStocks.reduce((total, stock) => {
-    const quantity = portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0;
-    return total + (stock.currentPrice - stock.previousClose) * quantity;
-  }, 0);
-  const portfolioPreviousValue = holdingStocks.reduce((total, stock) => {
-    const quantity = portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0;
-    return total + stock.previousClose * quantity;
-  }, 0);
-  const portfolioDayChangePercent = portfolioPreviousValue > 0 ? (portfolioDayChange / portfolioPreviousValue) * 100 : 0;
-  const performers = holdingStocks.map(stock => {
-    const change = stock.currentPrice - stock.previousClose;
-    const percent = stock.previousClose > 0 ? (change / stock.previousClose) * 100 : 0;
-    return { stock, change, percent };
-  });
-  const bestPerformer = performers.length > 0
-    ? performers.reduce((best, item) => item.percent > best.percent ? item : best)
-    : null;
-  const worstPerformer = performers.length > 0
-    ? performers.reduce((worst, item) => item.percent < worst.percent ? item : worst)
-    : null;
-  const sectorCounts = holdingStocks.reduce<Record<string, number>>((counts, stock) => {
-    const sector = stock.sector || 'Unknown';
-    counts[sector] = (counts[sector] ?? 0) + 1;
-    return counts;
-  }, {});
-  const dominantSector = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1])[0];
-  const sectorSummary = dominantSector && holdingStocks.length > 0
-    ? `${Math.round((dominantSector[1] / holdingStocks.length) * 100)}% ${dominantSector[0]}`
-    : 'No holdings';
+  const {
+    portfolioValue,
+    cashBalance,
+    totalPortfolioValue,
+    totalGain: portfolioTotalGain,
+    totalGainPercent: portfolioTotalGainPercent,
+    holdingStocks,
+    dayChange: portfolioDayChange,
+    dayChangePercent: portfolioDayChangePercent,
+    bestPerformer,
+    worstPerformer,
+    sectorSummary,
+  } = calculatePortfolioSummary(stocksData ?? [], portfolioQuantities[activePortfolio], portfolioAverageCosts[activePortfolio], portfolioCash[activePortfolio]);
+  const sectorAllocation = calculateSectorAllocation(holdingStocks, portfolioQuantities[activePortfolio]);
 
   useEffect(() => {
-    if (stocksData && stocksData.length > 0 && sectorFilter !== 'All' && !stocksData.some(stock => stock.sector === sectorFilter)) {
+    if (shouldResetSectorFilter(stocksData, sectorFilter)) {
       setSectorFilter('All');
     }
   }, [stocksData, sectorFilter]);
-
-  const getHoldingMetrics = (stock: StockInfo, quantity: number) => {
-    const hasHolding = quantity > 0;
-    const previousClose = stock.previousClose || stock.currentPrice;
-    const dayChange = stock.currentPrice - previousClose;
-    const dayChangePct = previousClose > 0 ? (dayChange / previousClose) * 100 : 0;
-    const avgCostPerShare = hasHolding ? (portfolioAverageCosts[activePortfolio]?.[stock.ticker] ?? stock.currentPrice) : 0;
-    const totalCost = hasHolding ? avgCostPerShare * quantity : 0;
-    const marketValue = stock.currentPrice * quantity;
-    const totalDivIncome = 0;
-    const dayGainDollar = dayChange * quantity;
-    const dayGainPct = previousClose > 0 ? dayChangePct : 0;
-    const totalGainDollar = marketValue - totalCost;
-    const totalGainPct = totalCost > 0 ? (totalGainDollar / totalCost) * 100 : 0;
-    const realizedGainDollar = 0;
-    const realizedGainPct = 0;
-
-    return {
-      hasHolding,
-      status: hasHolding ? 'Open' : '-',
-      shares: quantity,
-      avgCostPerShare,
-      totalCost,
-      marketValue,
-      totalDivIncome,
-      dayGainPct,
-      dayGainDollar,
-      totalGainPct,
-      totalGainDollar,
-      realizedGainPct,
-      realizedGainDollar,
-    };
-  };
 
   useEffect(() => {
     let isMounted = true;
@@ -426,9 +297,9 @@ export default function App() {
     }
     const { data, error } = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/` } });
+      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: authRedirectUrl(window.location.origin) } });
     if (error) {
-      return { error: error.message.toLowerCase().includes('email not confirmed') ? 'Verify your email using the confirmation link before signing in.' : error.message };
+      return { error: describeAuthError(error.message) };
     }
     if (mode === 'signup' && !data.session) {
       return { confirmationRequired: true };
@@ -441,7 +312,7 @@ export default function App() {
 
   const handleResendConfirmation = async (email: string): Promise<string | null> => {
     if (!supabase) return 'Cloud sync is not configured.';
-    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${window.location.origin}/` } });
+    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: authRedirectUrl(window.location.origin) } });
     return error?.message ?? null;
   };
 
@@ -579,20 +450,14 @@ export default function App() {
       setNewsLoading(true);
 
       try {
-        const now = new Date();
-        const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        const fromDate = from.toISOString().slice(0, 10);
-        const toDate = now.toISOString().slice(0, 10);
-        const response = await fetch(
-          `https://finnhub.io/api/v1/company-news?symbol=${selectedStock.ticker}&from=${fromDate}&to=${toDate}&token=${token}`
-        );
+        const response = await fetch(buildCompanyNewsUrl(selectedStock.ticker, token));
 
         if (!response.ok) {
           throw new Error(`News request failed: ${response.status}`);
         }
 
         const items = await response.json();
-        setStockNews(Array.isArray(items) ? items.slice(0, 5) : []);
+        setStockNews(toCompanyNewsItems(items));
       } catch (error) {
         console.warn('Unable to load stock news:', error);
         setStockNews([]);
@@ -606,7 +471,7 @@ export default function App() {
 
   useEffect(() => {
     const handleCommandSearch = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+      if (isSearchShortcut(event)) {
         event.preventDefault();
         (window.innerWidth < 1024 ? mobileSearchRef.current : globalSearchRef.current)?.focus();
       }
@@ -617,12 +482,12 @@ export default function App() {
   }, []);
 
   const handleGlobalSearch = () => {
-    const ticker = globalSearch.trim().toUpperCase();
-    if (!ticker) return;
-    if (activeTickers.includes(ticker)) {
-      setSelectedTicker(ticker);
+    const action = resolveSymbolSearch(globalSearch, activeTickers);
+    if (action.type === 'none') return;
+    if (action.type === 'select') {
+      setSelectedTicker(action.ticker);
     } else {
-      addStock(ticker);
+      addStock(action.ticker);
     }
     setGlobalSearch('');
   };
@@ -934,7 +799,7 @@ export default function App() {
                   <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_2fr]">
                     <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Total return</p><p className={`mt-2 font-mono text-lg ${portfolioTotalGain >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{portfolioTotalGain >= 0 ? '+' : '-'}${Math.abs(portfolioTotalGain).toFixed(2)} ({portfolioTotalGainPercent >= 0 ? '+' : ''}{portfolioTotalGainPercent.toFixed(2)}%)</p></div>
                     <label className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><span className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Cash position</span><span className="mt-2 flex items-center font-mono text-lg text-white">$<input aria-label="Cash position" type="number" min="0" step="0.01" value={cashBalance} onChange={event => setPortfolioCash(prev => ({ ...prev, [activePortfolio]: Math.max(0, Number(event.target.value) || 0) }))} className="min-w-0 flex-1 bg-transparent pl-1 text-white outline-none" /></span></label>
-                    <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Sector allocation by market value</p><div className="mt-3 flex h-2 overflow-hidden rounded-full bg-white/[.05]">{Object.entries(holdingStocks.reduce<Record<string, number>>((values, stock) => ({ ...values, [stock.sector || 'Unknown']: (values[stock.sector || 'Unknown'] ?? 0) + stock.currentPrice * (portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0) }), {})).map(([sector, value], index) => <span key={sector} title={`${sector}: ${portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(1) : 0}%`} style={{ width: `${portfolioValue > 0 ? (value / portfolioValue) * 100 : 0}%`, backgroundColor: ['#b7f34a', '#9b8ce8', '#e4b75c', '#54d99a', '#f07878'][index % 5] }} />)}</div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{Object.entries(holdingStocks.reduce<Record<string, number>>((values, stock) => ({ ...values, [stock.sector || 'Unknown']: (values[stock.sector || 'Unknown'] ?? 0) + stock.currentPrice * (portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0) }), {})).map(([sector, value]) => <span key={sector} className="text-[11px] text-[var(--text-secondary)]">{sector} {portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(0) : 0}%</span>)}</div></div>
+                    <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Sector allocation by market value</p><div className="mt-3 flex h-2 overflow-hidden rounded-full bg-white/[.05]">{sectorAllocation.map(([sector, value], index) => <span key={sector} title={`${sector}: ${portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(1) : 0}%`} style={{ width: `${portfolioValue > 0 ? (value / portfolioValue) * 100 : 0}%`, backgroundColor: ['#b7f34a', '#9b8ce8', '#e4b75c', '#54d99a', '#f07878'][index % 5] }} />)}</div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{sectorAllocation.map(([sector, value]) => <span key={sector} className="text-[11px] text-[var(--text-secondary)]">{sector} {portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(0) : 0}%</span>)}</div></div>
                   </div>
 
                   <div className="mb-5 rounded-[8px] border border-white/[.08] bg-black/10 p-4">
@@ -1014,7 +879,7 @@ export default function App() {
                     {stocksData.map((stock) => {
                       const quantity = portfolioQuantities[activePortfolio]?.[stock.ticker] ?? 0;
                       const isHolding = quantity > 0;
-                      const holdingMetrics = getHoldingMetrics(stock, quantity);
+                      const holdingMetrics = getHoldingMetrics(stock, quantity, portfolioAverageCosts[activePortfolio]?.[stock.ticker]);
 
                       return (
                         <tr
@@ -1135,13 +1000,11 @@ export default function App() {
                   <tbody>
                     {stocksData.map((stock) => {
                       const oneDay = ((stock.currentPrice - stock.previousClose) / stock.previousClose) * 100;
-                      const oneWeek = getPeriodReturn(stock, 5);
-                      const oneMonth = getPeriodReturn(stock, 21);
-                      const threeMonth = getPeriodReturn(stock, 63);
-                      const firstYtdIndex = stock.historicalData.findIndex(point => new Date(point.date).getFullYear() === new Date().getFullYear());
-                      const firstYtd = firstYtdIndex >= 0 ? stock.historicalData[firstYtdIndex].close : stock.historicalData[0]?.close;
-                      const ytd = firstYtd ? ((stock.currentPrice - firstYtd) / firstYtd) * 100 : 0;
-                      const oneYear = getPeriodReturn(stock, 252);
+                      const oneWeek = closeToCloseReturn(stock, 5);
+                      const oneMonth = closeToCloseReturn(stock, 21);
+                      const threeMonth = closeToCloseReturn(stock, 63);
+                      const ytd = yearToDateReturn(stock);
+                      const oneYear = closeToCloseReturn(stock, 252);
 
                       return (
                         <tr

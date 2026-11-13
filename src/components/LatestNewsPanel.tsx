@@ -1,15 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, Clock3, ExternalLink, Loader2 } from 'lucide-react';
 import CompanyMark from './CompanyMark';
-
-interface NewsItem {
-  headline: string;
-  summary: string;
-  url: string;
-  source: string;
-  datetime: number;
-  image?: string;
-}
+import type { NewsItem } from '../types/news';
 
 interface LatestNewsPanelProps {
   ticker: string;

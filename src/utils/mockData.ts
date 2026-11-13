@@ -22,6 +22,8 @@ export interface StockInfo {
   hasRealHistory: boolean;
   /** Why daily candles are missing when hasRealHistory is false for live data. */
   historyUnavailableReason?: string;
+  /** Shares outstanding from Finnhub's company profile (live data only). */
+  sharesOutstanding?: number;
 }
 
 interface HistoryResult {
@@ -107,32 +109,46 @@ const KNOWN_SECTOR_MAP: Record<string, string> = {
   AMD: 'Technology',
 };
 
-async function getTickerSector(ticker: string): Promise<string> {
+interface CompanyProfile {
+  sector: string;
+  sharesOutstanding?: number;
+}
+
+// Company profiles change rarely, so fetch each one once per session instead of on every refresh.
+const profileCache = new Map<string, Promise<CompanyProfile>>();
+
+async function fetchCompanyProfile(t: string): Promise<CompanyProfile> {
+  const knownSector = KNOWN_SECTOR_MAP[t];
+  const fallback: CompanyProfile = { sector: knownSector ?? 'Unknown' };
+  if (!FINNHUB_API_KEY) return fallback;
+
+  const profileUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${t}&token=${FINNHUB_API_KEY}`;
+  const profileResponse = await fetch(profileUrl);
+  if (!profileResponse.ok) throw new Error(`Finnhub profile returned HTTP ${profileResponse.status}`);
+
+  const profile = await profileResponse.json();
+  const industry = profile?.finnhubIndustry || profile?.industry || profile?.sector;
+  // Finnhub reports shareOutstanding in millions of shares.
+  const sharesMillions = Number(profile?.shareOutstanding);
+
+  return {
+    sector: knownSector ?? (typeof industry === 'string' && industry.trim() ? industry : 'Unknown'),
+    sharesOutstanding: Number.isFinite(sharesMillions) && sharesMillions > 0 ? sharesMillions * 1_000_000 : undefined,
+  };
+}
+
+function getCompanyProfile(ticker: string): Promise<CompanyProfile> {
   const t = ticker.toUpperCase();
+  const cached = profileCache.get(t);
+  if (cached) return cached;
 
-  if (KNOWN_SECTOR_MAP[t]) {
-    return KNOWN_SECTOR_MAP[t];
-  }
-
-  if (!FINNHUB_API_KEY) {
-    return 'Unknown';
-  }
-
-  try {
-    const profileUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${t}&token=${FINNHUB_API_KEY}`;
-    const profileResponse = await fetch(profileUrl);
-
-    if (!profileResponse.ok) {
-      return 'Unknown';
-    }
-
-    const profile = await profileResponse.json();
-    const sector = profile?.finnhubIndustry || profile?.industry || profile?.sector;
-    return typeof sector === 'string' && sector.trim() ? sector : 'Unknown';
-  } catch (error) {
-    console.warn(`Unable to resolve sector for ${t}:`, error);
-    return 'Unknown';
-  }
+  const pending = fetchCompanyProfile(t).catch(error => {
+    console.warn(`Unable to load company profile for ${t}:`, error);
+    profileCache.delete(t); // retry on the next refresh rather than caching the failure
+    return { sector: KNOWN_SECTOR_MAP[t] ?? 'Unknown' };
+  });
+  profileCache.set(t, pending);
+  return pending;
 }
 
 async function getFinnhubHistoricalData(ticker: string): Promise<StockDataPoint[]> {
@@ -255,8 +271,7 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
       const quote = await quoteResponse.json();
       const currentPrice = Number(quote.c ?? 0);
       const previousClose = Number(quote.pc ?? currentPrice);
-      const volume = Number(quote.v ?? 0);
-      const sector = await getTickerSector(t);
+      const profile = await getCompanyProfile(t);
 
       if (Number.isFinite(currentPrice) && currentPrice > 0) {
         const history = await getHistoricalData(t);
@@ -274,10 +289,13 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
           }
         }
 
+        // Finnhub's /quote has no volume field, so report the latest real daily candle's volume.
+        const volume = historicalData[historicalData.length - 1]?.volume ?? 0;
+
         return {
           ticker: t,
           name: t,
-          sector,
+          sector: profile.sector,
           currentPrice,
           previousClose,
           volume,
@@ -289,6 +307,7 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
             : 'Finnhub (live quote; history unavailable)',
           hasRealHistory: historicalData.length >= MIN_HISTORY_SESSIONS,
           historyUnavailableReason: history.error,
+          sharesOutstanding: profile.sharesOutstanding,
         };
       }
     }
@@ -300,7 +319,7 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
   const data = generateMockData(t);
   const currentPrice = data[data.length - 1].close;
   const previousClose = data[data.length - 2]?.close || currentPrice;
-  const sector = await getTickerSector(t);
+  const { sector } = await getCompanyProfile(t);
 
   return {
     ticker: t,

@@ -1,4 +1,5 @@
 import { hasSupabaseConfig, supabase } from './supabase';
+import type { Transaction } from '../types/portfolio';
 
 export type PortfolioMap = Record<string, string[]>;
 export type HoldingMap = Record<string, Record<string, { quantity: number; averageCost: number }>>;
@@ -7,7 +8,7 @@ export interface PortfolioState {
   portfolios: PortfolioMap;
   holdings: HoldingMap;
   cash: Record<string, number>;
-  transactions: Record<string, Array<{ id: string; ticker: string; type: 'buy' | 'sell'; quantity: number; price: number; date: string }>>;
+  transactions: Record<string, Transaction[]>;
 }
 
 export const DEFAULT_PORTFOLIOS: PortfolioMap = { 'My Watchlist': ['AAPL', 'MSFT', 'NVDA'] };

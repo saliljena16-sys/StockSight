@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, ExternalLink, Filter, Gauge, Layers3, Newspaper, Search } from 'lucide-react';
 import { StockInfo } from '../utils/mockData';
 import { analyzeStock } from '../utils/technicalAnalysis';
+import { annualizedVolatility30d as volatility, dayChangePercent as changePercent, returnToCurrentPrice as periodReturn } from '../utils/marketMetrics';
+import type { NewsItem } from '../types/news';
+import type { PrimaryView } from '../types/views';
 import CompanyMark from './CompanyMark';
 
-export type PrimaryView = 'watchlist' | 'markets' | 'screeners' | 'news' | 'analytics';
-
-type NewsItem = { headline: string; summary: string; url: string; source: string; datetime: number; image?: string };
+export type { PrimaryView };
 
 interface PrimaryWorkspaceProps {
   view: Exclude<PrimaryView, 'watchlist'>;
@@ -20,26 +21,6 @@ interface PrimaryWorkspaceProps {
 const Panel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
   <section className={`rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] ${className}`}>{children}</section>
 );
-
-const changePercent = (stock: StockInfo) => stock.previousClose > 0
-  ? ((stock.currentPrice - stock.previousClose) / stock.previousClose) * 100
-  : 0;
-
-const periodReturn = (stock: StockInfo, sessions: number) => {
-  const points = stock.historicalData;
-  if (points.length < 2) return 0;
-  const start = points[Math.max(0, points.length - 1 - sessions)]?.close;
-  return start ? ((stock.currentPrice - start) / start) * 100 : 0;
-};
-
-const volatility = (stock: StockInfo) => {
-  const closes = stock.historicalData.slice(-31).map(point => point.close);
-  if (closes.length < 3) return 0;
-  const returns = closes.slice(1).map((close, index) => (close - closes[index]) / closes[index]);
-  const mean = returns.reduce((sum, value) => sum + value, 0) / returns.length;
-  const variance = returns.reduce((sum, value) => sum + (value - mean) ** 2, 0) / returns.length;
-  return Math.sqrt(variance) * Math.sqrt(252) * 100;
-};
 
 const ViewHeading = ({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) => (
   <div className="mb-6">

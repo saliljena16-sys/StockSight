@@ -72,7 +72,7 @@ Before deploying, run Lighthouse against the production URL and test at 320px, 7
 
 ## Deployment
 
-Build with `npm run build` and deploy to Vercel. Configure the three environment variables in the host dashboard. The included `api/yahoo-finance/[...path].js` Vercel Function provides the production historical-data proxy; Vite provides the equivalent proxy during local development.
+Build with `npm run build` and deploy to Vercel. Configure the three environment variables in the host dashboard. The included `api/yahoo-finance.js` Vercel Function (routed by the rewrite in `vercel.json`) provides the production historical-data proxy for `/api/yahoo-finance/v8/finance/chart/<TICKER>`; Vite provides the equivalent proxy during local development.
 
 After deployment, replace the relative Open Graph image path in `index.html` with the absolute production URL for the most reliable LinkedIn preview.
 

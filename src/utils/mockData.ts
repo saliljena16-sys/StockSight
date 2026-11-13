@@ -20,6 +20,14 @@ export interface StockInfo {
   isLiveData: boolean;
   dataSource: string;
   hasRealHistory: boolean;
+  /** Why daily candles are missing when hasRealHistory is false for live data. */
+  historyUnavailableReason?: string;
+}
+
+interface HistoryResult {
+  data: StockDataPoint[];
+  source: string;
+  error?: string;
 }
 
 // Mock data generator for demo purposes
@@ -69,6 +77,10 @@ function generateMockData(ticker: string, days: number = 365): StockDataPoint[] 
 const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
 const HISTORY_CACHE_MS = 6 * 60 * 60 * 1000;
 const historyCache = new Map<string, { data: StockDataPoint[]; source: string; fetchedAt: number }>();
+const MIN_HISTORY_SESSIONS = 200;
+// Finnhub's free tier answers /stock/candle with 401/403. Once that happens, stop asking for the
+// rest of the session and rely on the Yahoo proxy instead.
+let finnhubCandlesBlocked = false;
 
 const KNOWN_SECTOR_MAP: Record<string, string> = {
   AAPL: 'Technology',
@@ -124,7 +136,7 @@ async function getTickerSector(ticker: string): Promise<string> {
 }
 
 async function getFinnhubHistoricalData(ticker: string): Promise<StockDataPoint[]> {
-  if (!FINNHUB_API_KEY) return [];
+  if (!FINNHUB_API_KEY || finnhubCandlesBlocked) return [];
   const to = Math.floor(Date.now() / 1000);
   // 400 calendar days comfortably covers the 200 trading sessions required by SMA-200.
   const from = to - 400 * 24 * 60 * 60;
@@ -132,6 +144,11 @@ async function getFinnhubHistoricalData(ticker: string): Promise<StockDataPoint[
 
   try {
     const response = await fetch(url);
+    if (response.status === 401 || response.status === 403) {
+      finnhubCandlesBlocked = true;
+      console.info(`Finnhub daily candles are not available on this API key (HTTP ${response.status}); using Yahoo Finance for history.`);
+      return [];
+    }
     if (!response.ok) return [];
 
     const candle = await response.json();
@@ -154,19 +171,37 @@ async function getFinnhubHistoricalData(ticker: string): Promise<StockDataPoint[
   }
 }
 
-async function getYahooHistoricalData(ticker: string): Promise<StockDataPoint[]> {
+async function readProxyError(response: Response): Promise<string> {
+  try {
+    const payload = await response.json();
+    if (typeof payload?.error === 'string' && payload.error.trim()) return payload.error;
+  } catch {
+    // Non-JSON body, e.g. a platform 404 page when the proxy route is missing.
+  }
+  return response.status === 404
+    ? 'Market history service not found (HTTP 404)'
+    : `Market history service returned HTTP ${response.status}`;
+}
+
+async function getYahooHistoricalData(ticker: string): Promise<{ data: StockDataPoint[]; error?: string }> {
   const period2 = Math.floor(Date.now() / 1000);
   const url = `/api/yahoo-finance/v8/finance/chart/${encodeURIComponent(ticker)}?period1=0&period2=${period2}&interval=1d&events=history`;
 
   try {
     const response = await fetch(url);
-    if (!response.ok) return [];
+    if (!response.ok) {
+      const error = await readProxyError(response);
+      console.warn(`Yahoo Finance history unavailable for ${ticker}: ${error}`);
+      return { data: [], error };
+    }
     const payload = await response.json();
     const result = payload?.chart?.result?.[0];
     const quote = result?.indicators?.quote?.[0];
-    if (!Array.isArray(result?.timestamp) || !quote) return [];
+    if (!Array.isArray(result?.timestamp) || !quote) {
+      return { data: [], error: 'No daily candles were returned for this symbol' };
+    }
 
-    return result.timestamp.map((timestamp: number, index: number) => ({
+    const data = result.timestamp.map((timestamp: number, index: number) => ({
       date: new Date(timestamp * 1000).toISOString().split('T')[0],
       open: Number(quote.open?.[index]),
       high: Number(quote.high?.[index]),
@@ -177,31 +212,36 @@ async function getYahooHistoricalData(ticker: string): Promise<StockDataPoint[]>
       Number.isFinite(point.open) && Number.isFinite(point.high) &&
       Number.isFinite(point.low) && Number.isFinite(point.close)
     );
+    return { data };
   } catch (error) {
     console.warn(`Unable to load Yahoo historical prices for ${ticker}:`, error);
-    return [];
+    return { data: [], error: 'Could not reach the market history service' };
   }
 }
 
-async function getHistoricalData(ticker: string): Promise<{ data: StockDataPoint[]; source: string }> {
+async function getHistoricalData(ticker: string): Promise<HistoryResult> {
   const cached = historyCache.get(ticker);
   if (cached && Date.now() - cached.fetchedAt < HISTORY_CACHE_MS) {
     return { data: cached.data, source: cached.source };
   }
 
   const finnhubData = await getFinnhubHistoricalData(ticker);
-  if (finnhubData.length >= 200) {
+  if (finnhubData.length >= MIN_HISTORY_SESSIONS) {
     historyCache.set(ticker, { data: finnhubData, source: 'Finnhub', fetchedAt: Date.now() });
     return { data: finnhubData, source: 'Finnhub' };
   }
 
-  const yahooData = await getYahooHistoricalData(ticker);
-  if (yahooData.length >= 200) {
-    historyCache.set(ticker, { data: yahooData, source: 'Yahoo Finance', fetchedAt: Date.now() });
-    return { data: yahooData, source: 'Yahoo Finance' };
+  const yahoo = await getYahooHistoricalData(ticker);
+  if (yahoo.data.length >= MIN_HISTORY_SESSIONS) {
+    historyCache.set(ticker, { data: yahoo.data, source: 'Yahoo Finance', fetchedAt: Date.now() });
+    return { data: yahoo.data, source: 'Yahoo Finance' };
   }
 
-  return { data: [], source: '' };
+  const error = yahoo.error
+    ?? (yahoo.data.length > 0
+      ? `Only ${yahoo.data.length} trading sessions available; ${MIN_HISTORY_SESSIONS} are required`
+      : 'No daily candles were returned for this symbol');
+  return { data: [], source: '', error };
 }
 
 export async function getStockInfo(ticker: string): Promise<StockInfo> {
@@ -244,10 +284,11 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
           historicalData,
           lastUpdated: new Date().toISOString(),
           isLiveData: true,
-          dataSource: historicalData.length >= 200
+          dataSource: historicalData.length >= MIN_HISTORY_SESSIONS
             ? `Finnhub live quote + ${history.source} daily candles`
             : 'Finnhub (live quote; history unavailable)',
-          hasRealHistory: historicalData.length >= 200,
+          hasRealHistory: historicalData.length >= MIN_HISTORY_SESSIONS,
+          historyUnavailableReason: history.error,
         };
       }
     }

@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createChart, CandlestickSeries, LineSeries, IChartApi, Time } from 'lightweight-charts';
 import { StockDataPoint } from '../utils/mockData';
 import { AnalysisResult } from '../utils/technicalAnalysis';
+import HistoryUnavailable from './HistoryUnavailable';
 
 interface CandlestickChartProps {
   data: StockDataPoint[];
   analysis: AnalysisResult;
   ticker: string;
+  /** Shown in the empty state when no daily candles could be loaded. */
+  unavailableReason?: string;
 }
 
 type ChartRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL';
@@ -24,7 +27,7 @@ function getRangeStart(range: ChartRange, latestDate: Date): Date | null {
   return start;
 }
 
-export default function CandlestickChart({ data, analysis, ticker }: CandlestickChartProps) {
+export default function CandlestickChart({ data, analysis, ticker, unavailableReason }: CandlestickChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [range, setRange] = useState<ChartRange>('1Y');
@@ -130,6 +133,17 @@ export default function CandlestickChart({ data, analysis, ticker }: Candlestick
       }
     };
   }, [visiblePoints, analysis, ticker]);
+
+  if (data.length === 0) {
+    return (
+      <div className="border-t border-white/[.06] pt-3">
+        <HistoryUnavailable
+          message={`The live quote for ${ticker} is current, but daily candles couldn't be loaded, so the chart, moving averages and signals are hidden. Refresh to try again.`}
+          reason={unavailableReason}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>

@@ -1416,6 +1416,7 @@ export default function App() {
                       data={selectedStock.historicalData}
                       analysis={analysis}
                       ticker={selectedStock.ticker}
+                      unavailableReason={selectedStock.historyUnavailableReason}
                     /></Suspense>
 
                   <div className="hidden">

@@ -1,16 +1,20 @@
 import { lazy, useMemo } from 'react';
-import { Activity, Layers3, LineChart, Loader2, TrendingUp } from 'lucide-react';
+import { Activity, EyeOff, Layers3, LineChart, Newspaper, Pencil, Plus, TrendingUp, type LucideIcon } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
 import { analyzeStock } from '../../utils/technicalAnalysis';
 import { historySignature } from '../../utils/chartData';
 import { getForecastInputs } from '../../utils/forecast';
+import { getHoldingMetrics } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
+import { formatCurrency, formatShares, formatSignedCurrency, formatSignedPercent } from '../../utils/format';
 import type { NewsItem } from '../../types/news';
 import type { DetailTab } from '../../types/views';
 import AnalysisPanel from '../AnalysisPanel';
 import CompanyMark from '../CompanyMark';
 import LatestNewsPanel from '../LatestNewsPanel';
 import LazyPanel from '../LazyPanel';
+import Delta from '../ui/Delta';
+import SignalChip from '../ui/SignalChip';
 
 // Heavy panels load on demand; each is wrapped in LazyPanel (error boundary + Suspense).
 const CandlestickChart = lazy(() => import('../CandlestickChart'));
@@ -21,14 +25,45 @@ interface StockDetailPanelProps {
   selectedStock: StockInfo;
   /** All loaded stocks, for the Compare tab. */
   stocks: StockInfo[];
+  /** Shares of the selected stock held in the active portfolio (0 when it is only watched). */
+  quantity: number;
+  averageCost: number | undefined;
   activeTab: DetailTab;
   onTabChange: (tab: DetailTab) => void;
   stockNews: NewsItem[];
   newsLoading: boolean;
+  /** Opens the holding dialog for the selected stock. */
+  onEditHolding: (ticker: string) => void;
+  /** Whether the stock can be removed (a portfolio keeps at least one stock). */
+  canRemove: boolean;
+  onRemove: (ticker: string) => void;
 }
 
-/** The selected stock: quote header, Chart/Analysis/Forecast/Compare tabs, and its news. */
-export default function StockDetailPanel({ selectedStock, stocks, activeTab, onTabChange, stockNews, newsLoading }: StockDetailPanelProps) {
+const TABS: Array<{ value: DetailTab; label: string; Icon: LucideIcon }> = [
+  { value: 'chart', label: 'Chart', Icon: LineChart },
+  { value: 'analysis', label: 'Analysis', Icon: Activity },
+  { value: 'forecast', label: 'Forecast', Icon: TrendingUp },
+  { value: 'compare', label: 'Compare', Icon: Layers3 },
+  { value: 'news', label: 'News', Icon: Newspaper },
+];
+
+/**
+ * The selected stock, alongside the holdings list: quote, your position with one-click edit, and
+ * tabs for Chart, Analysis, Forecast, Compare and News.
+ */
+export default function StockDetailPanel({
+  selectedStock,
+  stocks,
+  quantity,
+  averageCost,
+  activeTab,
+  onTabChange,
+  stockNews,
+  newsLoading,
+  onEditHolding,
+  canRemove,
+  onRemove,
+}: StockDetailPanelProps) {
   // Recompute indicators only when the history changes, so re-renders (typing in search, the quote
   // refresh) hand the chart the same object and it doesn't redraw. The signature catches the
   // refresh updating today's candle in place.
@@ -40,189 +75,116 @@ export default function StockDetailPanel({ selectedStock, stocks, activeTab, onT
   );
   const { cagr: forecastCagr, unavailableReason: forecastUnavailableReason } = getForecastInputs(selectedStock);
 
+  const { ticker } = selectedStock;
+  const held = quantity > 0;
+  const position = getHoldingMetrics(selectedStock, quantity, averageCost);
+  const change = selectedStock.currentPrice - selectedStock.previousClose;
+  const changePercent = (change / selectedStock.previousClose) * 100;
+  const editLabel = held ? `Edit ${ticker} holding` : `Add ${ticker} shares`;
+
   return (
-    <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(340px,.92fr)]">
-      <section className="min-w-0 rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] p-4 sm:p-5 lg:p-6">
-        <div className="mb-3 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-center gap-3">
-            <CompanyMark ticker={selectedStock.ticker} size={44} className="rounded-[9px]" />
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-semibold tracking-[-.03em] text-white">{selectedStock.ticker}</h2>
-                <span className={`flex items-center gap-1.5 text-[11px] font-semibold ${selectedStock.isLiveData ? 'text-[var(--positive)]' : 'text-[var(--warning)]'}`}><span className={`h-2 w-2 rounded-full ${selectedStock.isLiveData ? 'bg-[var(--positive)]' : 'bg-[var(--warning)]'}`} />{selectedStock.isLiveData ? 'LIVE QUOTE' : 'DEMO SERIES'}</span>
-              </div>
-              <p className="mt-0.5 text-[13px] text-[var(--text-secondary)]">{getCompanyMetadata(selectedStock.ticker, selectedStock.name).name} <span className="mx-1 text-[var(--text-tertiary)]">•</span> {selectedStock.sector}</p>
-              <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">Quote updated {new Date(selectedStock.lastUpdated).toLocaleTimeString()} · History through {selectedStock.historicalData[selectedStock.historicalData.length - 1]?.date ?? 'unavailable'} · {selectedStock.dataSource}</p>
+    <section data-detail-panel aria-labelledby="detail-heading" className="panel flex min-w-0 flex-col p-4 sm:p-5 lg:p-6">
+      {/* Identity, price and (below laptop width) the edit button. Under 360px the price drops to
+          its own row, so the ticker and company name are never squeezed out. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2.5 min-[360px]:max-lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div className="mr-1 flex min-w-0 items-center gap-3">
+          <CompanyMark ticker={ticker} size={40} className="rounded-control" />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h2 id="detail-heading" className="num text-lg font-semibold leading-6 text-ink">{ticker}</h2>
+              <SignalChip recommendation={analysis.recommendation} className="hidden sm:inline-flex" />
+              <span className={`chip max-sm:h-auto max-sm:border-0 max-sm:p-0 ${selectedStock.isLiveData ? 'border-gain/35 text-gain' : 'border-warn/35 text-warn'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${selectedStock.isLiveData ? 'bg-gain' : 'bg-warn'}`} aria-hidden="true" />
+                {selectedStock.isLiveData ? 'Live' : 'Demo'}
+              </span>
             </div>
-          </div>
-          <div className="text-left sm:text-right">
-            <p className="font-mono text-[30px] font-medium tracking-[-.05em] text-white">${selectedStock.currentPrice.toFixed(2)}</p>
-            <p className={`mt-1 font-mono text-sm font-medium ${selectedStock.currentPrice >= selectedStock.previousClose ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-              {selectedStock.currentPrice >= selectedStock.previousClose ? '+' : ''}{(selectedStock.currentPrice - selectedStock.previousClose).toFixed(2)} ({selectedStock.currentPrice >= selectedStock.previousClose ? '+' : ''}{(((selectedStock.currentPrice - selectedStock.previousClose) / selectedStock.previousClose) * 100).toFixed(2)}%)
+            <p className="mt-0.5 truncate text-[13px] leading-5 text-ink-muted">
+              {getCompanyMetadata(ticker, selectedStock.name).name}
+              <span className="hidden sm:inline"> <span className="mx-1 text-ink-dim">·</span> {selectedStock.sector}</span>
+            </p>
+            <p className="mt-1 hidden text-[11px] leading-4 text-ink-dim md:block">
+              Quote updated {new Date(selectedStock.lastUpdated).toLocaleTimeString()} · History through {historicalData[historicalData.length - 1]?.date ?? 'unavailable'} · {selectedStock.dataSource}
             </p>
           </div>
         </div>
 
-      <div className="mobile-scroll mb-5 flex items-center gap-1 overflow-x-auto border-b border-white/[.08]">
-        <button
-          onClick={() => onTabChange('chart')}
-          aria-pressed={activeTab === 'chart'}
-          className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
-            activeTab === 'chart' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
-          }`}
-        >
-          <LineChart className="w-4 h-4" />
-          Price Chart
-        </button>
-        <button
-          onClick={() => onTabChange('analysis')}
-          aria-pressed={activeTab === 'analysis'}
-          className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
-            activeTab === 'analysis' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-          Analysis
-        </button>
-        <button
-          onClick={() => onTabChange('forecast')}
-          aria-pressed={activeTab === 'forecast'}
-          className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
-            activeTab === 'forecast' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'
-          }`}
-        >
-          <TrendingUp className="w-4 h-4" />
-          Forecast
-        </button>
-        <button
-          onClick={() => onTabChange('compare')}
-          aria-pressed={activeTab === 'compare'}
-          className={`flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${activeTab === 'compare' ? 'border-lime-300 text-lime-200' : 'border-transparent text-[var(--text-secondary)] hover:text-white'}`}
-        >
-          <Layers3 className="h-4 w-4" />Compare
+        <div className="max-[359px]:order-last max-[359px]:col-span-2 max-[359px]:flex max-[359px]:flex-wrap max-[359px]:items-baseline max-[359px]:gap-x-3 min-[360px]:text-right">
+          <p className="num text-[22px] font-medium leading-6 tracking-[-0.04em] text-ink sm:text-[28px] sm:leading-8">{formatCurrency(selectedStock.currentPrice)}</p>
+          <Delta value={change} className="mt-0.5 text-xs min-[360px]:justify-end sm:text-[13px]">
+            {change >= 0 ? '+' : ''}{change.toFixed(2)} ({formatSignedPercent(changePercent)})
+          </Delta>
+        </div>
+        <button type="button" onClick={() => onEditHolding(ticker)} aria-label={editLabel} title={held ? 'Edit holding' : 'Add shares'} className="icon-btn lg:hidden">
+          {held ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
 
-      <div className="space-y-6">
+      {/* Your position. Above the tabs on wide screens; below the chart on small ones, where the
+          edit button in the header keeps it one tap away. */}
+      <div className="order-last mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line pt-3 lg:order-none lg:border-b lg:py-3">
+        {/* From laptop width the figures take the free space and wrap among themselves, so the
+            buttons stay on the right however long the numbers get. */}
+        {held ? (
+          <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-[13px] lg:min-w-0 lg:flex-1">
+            <div className="flex items-baseline gap-2"><dt className="eyebrow">Shares</dt><dd className="num text-ink">{formatShares(quantity)}</dd></div>
+            <div className="flex items-baseline gap-2"><dt className="eyebrow">Avg cost</dt><dd className="num text-ink">{formatCurrency(position.avgCostPerShare)}</dd></div>
+            <div className="flex items-baseline gap-2"><dt className="eyebrow">Value</dt><dd className="num text-ink">{formatCurrency(position.marketValue)}</dd></div>
+            <div className="flex items-baseline gap-2">
+              <dt className="eyebrow">Total P/L</dt>
+              <dd><Delta value={position.totalGainDollar}>{formatSignedCurrency(position.totalGainDollar)} ({formatSignedPercent(position.totalGainPct)})</Delta></dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-[13px] leading-5 text-ink-muted lg:min-w-0 lg:flex-1">You&apos;re watching {ticker}. Add your shares to track its value and profit or loss.</p>
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <SignalChip recommendation={analysis.recommendation} className="sm:hidden" />
+          {/* On small laptops a held position's figures need the width, so the button is icon-only there. */}
+          <button type="button" onClick={() => onEditHolding(ticker)} title={held ? 'Edit holding' : 'Add shares'} className="btn btn-secondary btn-sm hidden lg:inline-flex">
+            {held ? <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
+            <span className={held ? 'max-xl:sr-only' : undefined}>{held ? 'Edit holding' : 'Add shares'}</span>
+          </button>
+          {canRemove && (
+            <button type="button" onClick={() => onRemove(ticker)} aria-label={`Remove ${ticker} from this portfolio`} title="Remove stock" className="icon-btn icon-btn-plain icon-btn-sm text-ink-dim">
+              <EyeOff className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="mobile-scroll mt-2 flex items-center gap-3 overflow-x-auto border-b border-line sm:gap-6 lg:mt-1" role="group" aria-label={`${ticker} views`}>
+        {TABS.map(({ value, label, Icon }) => (
+          <button key={value} type="button" onClick={() => onTabChange(value)} aria-pressed={activeTab === value} className="tab">
+            <Icon className="hidden h-4 w-4 sm:block" aria-hidden="true" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 lg:mt-4">
         {activeTab === 'chart' && (
-          <div>
-            <div className="hidden">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-semibold tracking-[-.03em] text-white">
-                    {selectedStock.ticker} — {selectedStock.name}
-                  </h2>
-                  {selectedStock.isLiveData && (
-                    <span className="flex items-center gap-1 text-[10px] text-[#54d99a] font-medium">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#54d99a]"></div>
-                      LIVE
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-[#68716a] mt-1">
-                  {selectedStock.sector} • Historical Price Action
-                  {selectedStock.isLiveData &&
-                    ` • Last updated: ${new Date(selectedStock.lastUpdated).toLocaleTimeString()}`}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-[28px] font-medium font-mono text-white tracking-[-.05em]">${selectedStock.currentPrice.toFixed(2)}</p>
-                <p
-                  className={`text-sm font-medium ${
-                    selectedStock.currentPrice >= selectedStock.previousClose
-                      ? 'text-emerald-400'
-                      : 'text-red-400'
-                  }`}
-                >
-                  {selectedStock.currentPrice >= selectedStock.previousClose ? '+' : ''}
-                  {(selectedStock.currentPrice - selectedStock.previousClose).toFixed(2)} (
-                  {(
-                    ((selectedStock.currentPrice - selectedStock.previousClose) /
-                      selectedStock.previousClose) *
-                    100
-                  ).toFixed(2)}
-                  %)
-                </p>
-              </div>
-            </div>
-            <LazyPanel resetKey={selectedStock.ticker}><CandlestickChart
-                data={selectedStock.historicalData}
-                analysis={analysis}
-                ticker={selectedStock.ticker}
-                unavailableReason={selectedStock.historyUnavailableReason}
-              /></LazyPanel>
-
-            <div className="hidden">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-[10px] uppercase tracking-[.16em] text-[#68716a]">Market feed</p>
-                  <h3 className="text-base font-semibold text-white mt-1">Latest news</h3>
-                </div>
-                <span className="text-xs font-mono text-[#68716a]">{selectedStock.ticker}</span>
-              </div>
-
-              {newsLoading ? (
-                <div className="flex items-center gap-2 text-slate-400 text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading news...
-                </div>
-              ) : stockNews.length > 0 ? (
-                <div className="grid md:grid-cols-2 md:gap-x-6">
-                  {stockNews.map((item) => (
-                    <a
-                      key={`${item.source}-${item.datetime}-${item.headline}`}
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="group block border-t border-white/[.07] py-4 hover:bg-white/[.018] transition-colors"
-                    >
-                      <div className="flex items-start gap-3">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.headline}
-                            className="w-14 h-14 object-cover rounded-[6px] border border-white/[.08] grayscale-[25%]"
-                          />
-                        ) : (
-                          <div className="w-14 h-14 rounded-[6px] bg-white/[.03] border border-white/[.07] flex items-center justify-center text-[9px] uppercase tracking-wider text-[#68716a]">
-                            News
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[9px] uppercase tracking-[.12em] text-[#54d99a] mb-1">
-                            {item.source}
-                          </div>
-                          <h4 className="text-sm font-medium leading-5 text-[#e7eae7] group-hover:text-white line-clamp-2">{item.headline}</h4>
-                          <p className="mt-1 text-xs leading-4 text-[#68716a] line-clamp-2">{item.summary}</p>
-                        </div>
-                      </div>
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400">
-                  No recent company news is available for {selectedStock.ticker} right now.
-                </p>
-              )}
-            </div>
-          </div>
+          <LazyPanel resetKey={ticker}>
+            <CandlestickChart
+              data={historicalData}
+              analysis={analysis}
+              ticker={ticker}
+              unavailableReason={selectedStock.historyUnavailableReason}
+            />
+          </LazyPanel>
         )}
 
-        {activeTab === 'analysis' && (
-          <AnalysisPanel analysis={analysis} ticker={selectedStock.ticker} />
-        )}
+        {activeTab === 'analysis' && <AnalysisPanel analysis={analysis} ticker={ticker} />}
 
         {activeTab === 'forecast' && (
-          <LazyPanel resetKey={selectedStock.ticker}><FinancialForecaster
-            cagr={forecastCagr}
-            ticker={selectedStock.ticker}
-            unavailableReason={forecastUnavailableReason}
-          /></LazyPanel>
+          <LazyPanel resetKey={ticker}>
+            <FinancialForecaster cagr={forecastCagr} ticker={ticker} unavailableReason={forecastUnavailableReason} />
+          </LazyPanel>
         )}
+
         {activeTab === 'compare' && <LazyPanel><ComparisonPanel stocks={stocks} /></LazyPanel>}
+
+        {activeTab === 'news' && <LatestNewsPanel ticker={ticker} items={stockNews} loading={newsLoading} />}
       </div>
-      </section>
-      <LatestNewsPanel ticker={selectedStock.ticker} items={stockNews} loading={newsLoading} />
-    </div>
+    </section>
   );
 }

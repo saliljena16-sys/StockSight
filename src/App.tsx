@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { STARTER_STOCKS } from './utils/mockData';
 import { calculatePortfolioSummary, calculateSectorAllocation } from './utils/portfolioMetrics';
+import { scrollToTop } from './utils/scroll';
 import type { PrimaryView } from './types/views';
 import { usePortfolioState } from './hooks/usePortfolioState';
 import { useStockQuotes } from './hooks/useStockQuotes';
@@ -9,27 +11,26 @@ import { useStockNews } from './hooks/useStockNews';
 import { useSymbolSearch } from './hooks/useSymbolSearch';
 import { useWatchlistView } from './hooks/useWatchlistView';
 import AppHeader from './components/layout/AppHeader';
-import MobilePrimaryNav from './components/layout/MobilePrimaryNav';
-import MobileSearchBar from './components/layout/MobileSearchBar';
+import MobileTabBar from './components/layout/MobileTabBar';
 import NoticeBanner from './components/layout/NoticeBanner';
 import AppFooter from './components/layout/AppFooter';
-import PortfolioBar from './components/watchlist/PortfolioBar';
-import WatchlistLoading from './components/watchlist/WatchlistLoading';
-import WatchlistToolbar from './components/watchlist/WatchlistToolbar';
+import PortfolioHero from './components/portfolio/PortfolioHero';
+import HoldingsList from './components/portfolio/HoldingsList';
+import AddHoldingModal from './components/portfolio/AddHoldingModal';
+import PortfolioSkeleton from './components/portfolio/PortfolioSkeleton';
+import EmptyPortfolio from './components/portfolio/EmptyPortfolio';
 import WatchlistTable from './components/watchlist/WatchlistTable';
-import WatchlistCards from './components/watchlist/WatchlistCards';
 import StockDetailPanel from './components/detail/StockDetailPanel';
 import PrimaryWorkspace from './components/PrimaryWorkspace';
-import AddStockModal from './components/AddStockModal';
 import AuthModal from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
 
 /**
- * App shell: connects the state hooks to the header, the primary views, the watchlist (cards or
- * table), the selected-stock detail panel, and the modals.
+ * App shell: connects the state hooks to the header, the portfolio screen (hero, holdings list,
+ * stock detail panel, tables), the Insights and News views, and the dialogs.
  */
 export default function App() {
-  const [primaryView, setPrimaryView] = useState<PrimaryView>('watchlist');
+  const [primaryView, setPrimaryView] = useState<PrimaryView>('portfolio');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [editingTicker, setEditingTicker] = useState<string | null>(null);
@@ -72,26 +73,48 @@ export default function App() {
   const { stockNews, newsLoading } = useStockNews(selectedStock?.ticker);
   const search = useSymbolSearch({ activeTickers, onSelect: setSelectedTicker, onAdd: addStock });
 
-  const summary = calculatePortfolioSummary(stocksData ?? [], portfolioQuantities[activePortfolio], portfolioAverageCosts[activePortfolio], portfolioCash[activePortfolio]);
-  const sectorAllocation = calculateSectorAllocation(summary.holdingStocks, portfolioQuantities[activePortfolio]);
+  const quantities = portfolioQuantities[activePortfolio];
+  const averageCosts = portfolioAverageCosts[activePortfolio];
+  const summary = calculatePortfolioSummary(stocksData ?? [], quantities, averageCosts, portfolioCash[activePortfolio]);
+  const sectorAllocation = calculateSectorAllocation(summary.holdingStocks, quantities);
+  const hasHoldings = Object.values(quantities ?? {}).some(quantity => quantity > 0);
+  // Tickers are listed but their quotes have not arrived yet.
+  const quotesLoading = !stocksData && activeTickers.length > 0;
 
-  /** Jump from another view to a stock's price chart in the watchlist. */
+  const navigate = (next: PrimaryView) => {
+    setPrimaryView(next);
+    scrollToTop();
+  };
+
+  /** Jump from another view to a stock's price chart on the portfolio screen. */
   const inspectStock = (ticker: string) => {
     setSelectedTicker(ticker);
-    setPrimaryView('watchlist');
+    setPrimaryView('portfolio');
     view.setActiveTab('chart');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToTop();
+  };
+
+  const addHolding = (ticker: string, quantity: number, averageCost: number) => {
+    saveHolding(ticker, quantity, averageCost);
+    setNotice(`${ticker} added to your holdings.`);
+  };
+
+  const loadSampleWatchlist = () => {
+    STARTER_STOCKS.forEach(addStock);
+    setSelectedTicker(STARTER_STOCKS[0]);
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-[#f3f5f2]">
+    <div className="relative isolate min-h-screen">
+      <div className="app-backdrop" aria-hidden="true" />
       <AppHeader
         primaryView={primaryView}
-        onNavigate={setPrimaryView}
+        onNavigate={navigate}
         searchQuery={search.query}
         onSearchChange={search.setQuery}
         onSearchSubmit={search.submit}
-        searchInputRef={search.desktopInputRef}
+        searchInputRef={search.inputRef}
+        hasQuotes={Boolean(stocksData)}
         hasLiveData={hasLiveData}
         allLiveData={allLiveData}
         isLoading={isLoading}
@@ -101,108 +124,115 @@ export default function App() {
         userEmail={userEmail}
         onSignIn={() => setShowAuthModal(true)}
         onSignOut={signOut}
-        onAddStock={() => setShowAddModal(true)}
       />
 
-      <MobilePrimaryNav primaryView={primaryView} onNavigate={setPrimaryView} />
+      <main className="mx-auto w-full min-w-0 max-w-[1600px] px-4 sm:px-6 lg:px-8">
+        {primaryView === 'portfolio' ? (
+          <>
+            <PortfolioHero
+              portfolioNames={Object.keys(portfolios)}
+              activePortfolio={activePortfolio}
+              onSelectPortfolio={setActivePortfolio}
+              onCreate={createPortfolio}
+              onRename={renamePortfolio}
+              onDelete={deletePortfolio}
+              summary={summary}
+              loading={quotesLoading}
+              hasHoldings={hasHoldings}
+              watchedCount={activeTickers.length}
+              hasSimulatedPrices={Boolean(stocksData) && !allLiveData}
+              signedIn={Boolean(userEmail)}
+              onAddHolding={() => setShowAddModal(true)}
+              onLoadSample={loadSampleWatchlist}
+            />
 
-      <MobileSearchBar value={search.query} onChange={search.setQuery} onSubmit={search.submit} inputRef={search.mobileInputRef} />
+            {quotesLoading && <PortfolioSkeleton rows={activeTickers.length} />}
+            {activeTickers.length === 0 && <EmptyPortfolio />}
 
-      {primaryView === 'watchlist' && (
-        <PortfolioBar
-          portfolioNames={Object.keys(portfolios)}
-          activePortfolio={activePortfolio}
-          onSelectPortfolio={setActivePortfolio}
-          holdingsCount={summary.holdingStocks.length}
-          totalPortfolioValue={summary.totalPortfolioValue}
-          onCreate={createPortfolio}
-          onRename={renamePortfolio}
-          onDelete={deletePortfolio}
-        />
-      )}
+            {stocksData && (
+              <>
+                <div className="grid gap-4 lg:grid-cols-[minmax(300px,360px)_minmax(0,1fr)] lg:items-start xl:grid-cols-[420px_minmax(0,1fr)]">
+                  <HoldingsList
+                    stocks={stocksData}
+                    quantities={quantities}
+                    selectedTicker={selectedTicker}
+                    onSelect={setSelectedTicker}
+                    onEditHolding={setEditingTicker}
+                    className="lg:sticky lg:top-20 lg:max-h-[calc(100svh-6rem)]"
+                  />
+                  {selectedStock && (
+                    <StockDetailPanel
+                      selectedStock={selectedStock}
+                      stocks={stocksData}
+                      quantity={quantities?.[selectedStock.ticker] ?? 0}
+                      averageCost={averageCosts?.[selectedStock.ticker]}
+                      activeTab={view.activeTab}
+                      onTabChange={view.setActiveTab}
+                      stockNews={stockNews}
+                      newsLoading={newsLoading}
+                      onEditHolding={setEditingTicker}
+                      canRemove={activeTickers.length > 1}
+                      onRemove={removeStock}
+                    />
+                  )}
+                </div>
 
-      {/* Main Content */}
-      <main className="mx-auto min-w-0 w-[calc(100%-24px)] max-w-[1680px] py-4 sm:w-[calc(100%-32px)] sm:py-6 xl:w-[calc(100%-48px)]">
-        {notice && <NoticeBanner message={notice} onDismiss={() => setNotice(null)} />}
-        {primaryView !== 'watchlist' && (
+                <WatchlistTable
+                  tableTab={view.tableTab}
+                  onSelectTab={view.setTableTab}
+                  stocks={stocksData}
+                  filteredStocks={filteredStocks}
+                  sectorFilter={sectorFilter}
+                  availableSectors={availableSectors}
+                  onSectorChange={setSectorFilter}
+                  onAddHolding={() => setShowAddModal(true)}
+                  summary={summary}
+                  sectorAllocation={sectorAllocation}
+                  transactions={portfolioTransactions[activePortfolio]}
+                  quantities={quantities}
+                  averageCosts={averageCosts}
+                  selectedTicker={selectedTicker}
+                  onSelect={setSelectedTicker}
+                  onEditHolding={setEditingTicker}
+                  onCashChange={setCashBalance}
+                />
+              </>
+            )}
+          </>
+        ) : (
           <PrimaryWorkspace
             view={primaryView}
             stocks={stocksData ?? []}
-            quantities={portfolioQuantities[activePortfolio] ?? {}}
+            loading={quotesLoading}
+            quantities={quantities ?? {}}
             totalValue={summary.totalPortfolioValue}
             cash={summary.cashBalance}
             onInspect={inspectStock}
           />
         )}
-        {primaryView === 'watchlist' && isLoading && !stocksData && <WatchlistLoading />}
-
-        {primaryView === 'watchlist' && stocksData && (
-          <WatchlistToolbar
-            viewMode={view.viewMode}
-            tableTab={view.tableTab}
-            onSelectTableTab={view.showTableTab}
-            onShowCards={view.showCards}
-            onShowTable={view.showTable}
-          />
-        )}
-
-        {primaryView === 'watchlist' && stocksData && view.viewMode === 'table' && (
-          <WatchlistTable
-            tableTab={view.tableTab}
-            stocks={stocksData}
-            filteredStocks={filteredStocks}
-            sectorFilter={sectorFilter}
-            availableSectors={availableSectors}
-            onSectorChange={setSectorFilter}
-            onAddTickers={() => setShowAddModal(true)}
-            summary={summary}
-            sectorAllocation={sectorAllocation}
-            transactions={portfolioTransactions[activePortfolio]}
-            quantities={portfolioQuantities[activePortfolio]}
-            averageCosts={portfolioAverageCosts[activePortfolio]}
-            selectedTicker={selectedTicker}
-            onSelect={setSelectedTicker}
-            onEditHolding={setEditingTicker}
-            onCashChange={setCashBalance}
-          />
-        )}
-
-        {primaryView === 'watchlist' && stocksData && view.viewMode === 'cards' && (
-          <WatchlistCards
-            stocks={stocksData}
-            selectedTicker={selectedTicker}
-            onSelect={setSelectedTicker}
-            canRemove={activeTickers.length > 1}
-            onRemove={removeStock}
-            onAddSymbol={() => setShowAddModal(true)}
-          />
-        )}
-
-        {primaryView === 'watchlist' && selectedStock && (
-          <StockDetailPanel
-            selectedStock={selectedStock}
-            stocks={stocksData ?? []}
-            activeTab={view.activeTab}
-            onTabChange={view.setActiveTab}
-            stockNews={stockNews}
-            newsLoading={newsLoading}
-          />
-        )}
       </main>
 
       <AppFooter showDemoNote={!hasLiveData && Boolean(stocksData)} />
+      <MobileTabBar primaryView={primaryView} onNavigate={navigate} />
+      {notice && <NoticeBanner message={notice} onDismiss={() => setNotice(null)} />}
 
-      <AddStockModal
+      <AddHoldingModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
-        onAdd={addStock}
-        existingTickers={activeTickers}
+        watchlist={activeTickers.map(ticker => ({
+          ticker,
+          quantity: quantities?.[ticker] ?? 0,
+          averageCost: averageCosts?.[ticker],
+          price: stocksData?.find(stock => stock.ticker === ticker)?.currentPrice,
+        }))}
+        onSaveHolding={addHolding}
+        onWatch={addStock}
       />
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onSubmit={signIn} onResend={resendConfirmation} />
       <HoldingModal
         ticker={editingTicker}
-        initialQuantity={editingTicker ? (portfolioQuantities[activePortfolio]?.[editingTicker] ?? 0) : 0}
-        initialAverageCost={editingTicker ? (portfolioAverageCosts[activePortfolio]?.[editingTicker] ?? stocksData?.find(stock => stock.ticker === editingTicker)?.currentPrice ?? 0) : 0}
+        initialQuantity={editingTicker ? (quantities?.[editingTicker] ?? 0) : 0}
+        initialAverageCost={editingTicker ? (averageCosts?.[editingTicker] ?? stocksData?.find(stock => stock.ticker === editingTicker)?.currentPrice ?? 0) : 0}
         onClose={() => setEditingTicker(null)}
         onSave={(quantity, averageCost) => {
           if (!editingTicker) return;

@@ -13,6 +13,8 @@
     "test": "node --experimental-strip-types --test tests/analytics.test.ts tests/yahooProxy.test.ts tests/keyStats.test.ts tests/forecastAndErrors.test.ts tests/appUtils.test.ts tests/portfolioState.test.ts tests/portfolioNames.test.ts tests/components.test.ts tests/chartData.test.ts"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@supabase/supabase-js": "^2.116.0",
     "date-fns": "^2.30.0",
     "lightweight-charts": "^5.2.1",

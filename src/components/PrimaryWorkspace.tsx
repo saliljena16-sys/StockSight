@@ -1,36 +1,45 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, ExternalLink, Filter, Gauge, Layers3, Newspaper, Search } from 'lucide-react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AlertTriangle, ExternalLink, Newspaper, PieChart, Search, ShieldCheck } from 'lucide-react';
 import { StockInfo } from '../utils/mockData';
 import { analyzeStock } from '../utils/technicalAnalysis';
 import { annualizedVolatility30d as volatility, dayChangePercent as changePercent, returnToCurrentPrice as periodReturn } from '../utils/marketMetrics';
+import { formatSignedPercent } from '../utils/format';
 import type { NewsItem } from '../types/news';
-import type { PrimaryView } from '../types/views';
 import CompanyMark from './CompanyMark';
-
-export type { PrimaryView };
+import Delta from './ui/Delta';
+import SignalChip from './ui/SignalChip';
 
 interface PrimaryWorkspaceProps {
-  view: Exclude<PrimaryView, 'watchlist'>;
+  view: 'insights' | 'news';
   stocks: StockInfo[];
+  /** True while the first quotes load: placeholders are shown instead of empty states. */
+  loading: boolean;
   quantities: Record<string, number>;
   totalValue: number;
   cash: number;
   onInspect: (ticker: string) => void;
 }
 
-const Panel = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <section className={`rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] ${className}`}>{children}</section>
-);
-
-const ViewHeading = ({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) => (
-  <div className="mb-6">
-    <p className="mb-1.5 text-[10px] uppercase tracking-[.2em] text-lime-300/75">{eyebrow}</p>
-    <h2 className="text-2xl font-semibold tracking-[-.04em] text-white">{title}</h2>
-    <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-secondary)]">{description}</p>
+const ViewHeading = ({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: ReactNode }) => (
+  <div className="mb-6 flex flex-col gap-4 pt-6 sm:flex-row sm:items-end sm:justify-between lg:pt-9">
+    <div>
+      <p className="eyebrow mb-2">{eyebrow}</p>
+      <h2 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink sm:text-4xl">{title}</h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">{description}</p>
+    </div>
+    {children}
   </div>
 );
 
-function MarketsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks' | 'onInspect'>) {
+const Tile = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="panel p-4 sm:p-5">
+    <p className="eyebrow">{label}</p>
+    <p className="num mt-2 text-xl text-ink">{children}</p>
+  </div>
+);
+
+/** Signals: market pulse, the signal screener, today's leaders and the sector tape. */
+function SignalsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks' | 'onInspect'>) {
   const ranked = useMemo(() => [...stocks].sort((a, b) => changePercent(b) - changePercent(a)), [stocks]);
   const advancing = stocks.filter(stock => changePercent(stock) >= 0).length;
   const averageMove = stocks.length ? stocks.reduce((sum, stock) => sum + changePercent(stock), 0) / stocks.length : 0;
@@ -43,26 +52,6 @@ function MarketsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks'
     return map;
   }, {})).map(([name, value]) => ({ name, change: value.total / value.count })).sort((a, b) => b.change - a.change);
 
-  return <>
-    <ViewHeading eyebrow="Market pulse" title="What is moving today" description="A compact read on breadth, leadership, and sector direction across the symbols currently in your workspace." />
-    <div className="mb-4 grid gap-3 sm:grid-cols-3">
-      {[
-        { label: 'Breadth', value: `${advancing}/${stocks.length} advancing`, icon: Activity, tone: advancing >= stocks.length / 2 ? 'text-[var(--positive)]' : 'text-[var(--negative)]' },
-        { label: 'Average move', value: `${averageMove >= 0 ? '+' : ''}${averageMove.toFixed(2)}%`, icon: Gauge, tone: averageMove >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]' },
-        { label: 'Combined volume', value: totalVolume >= 1e6 ? `${(totalVolume / 1e6).toFixed(1)}M` : totalVolume.toLocaleString(), icon: BarChart3, tone: 'text-white' },
-      ].map(item => <Panel key={item.label} className="p-5"><item.icon className="mb-5 h-4 w-4 text-lime-300/70" /><p className="text-xs text-[var(--text-tertiary)]">{item.label}</p><p className={`mt-1 font-mono text-xl ${item.tone}`}>{item.value}</p></Panel>)}
-    </div>
-    <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
-      <Panel className="overflow-hidden">
-        <div className="border-b border-white/[.07] px-5 py-4"><h3 className="font-semibold text-white">Leader board</h3><p className="mt-1 text-xs text-[var(--text-tertiary)]">Ranked by today&apos;s move</p></div>
-        <div className="divide-y divide-white/[.06]">{ranked.map((stock, index) => { const move = changePercent(stock); return <button key={stock.ticker} onClick={() => onInspect(stock.ticker)} className="grid w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-4 py-3 text-left hover:bg-white/[.035] sm:grid-cols-[28px_1fr_auto_auto] sm:gap-3 sm:px-5"><span className="font-mono text-xs text-[var(--text-tertiary)]">{String(index + 1).padStart(2, '0')}</span><span className="flex min-w-0 items-center gap-2 sm:gap-3"><CompanyMark ticker={stock.ticker} size={28} /><span className="min-w-0"><span className="block text-sm font-semibold text-white">{stock.ticker}</span><span className="block truncate text-[11px] text-[var(--text-tertiary)]">{stock.sector}</span></span></span><span className="hidden font-mono text-sm text-white sm:block">${stock.currentPrice.toFixed(2)}</span><span className={`text-right font-mono text-sm sm:min-w-20 ${move >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{move >= 0 ? '+' : ''}{move.toFixed(2)}%</span></button>})}</div>
-      </Panel>
-      <Panel className="p-5"><div className="mb-5 flex items-center gap-2"><Layers3 className="h-4 w-4 text-lime-300/70" /><h3 className="font-semibold text-white">Sector tape</h3></div><div className="space-y-4">{sectors.map(sector => <div key={sector.name}><div className="mb-1.5 flex justify-between gap-3 text-xs"><span className="truncate text-[var(--text-secondary)]">{sector.name}</span><span className={sector.change >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}>{sector.change >= 0 ? '+' : ''}{sector.change.toFixed(2)}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/[.06]"><div className={`h-full rounded-full ${sector.change >= 0 ? 'bg-[var(--positive)]' : 'bg-[var(--negative)]'}`} style={{ width: `${Math.min(100, Math.max(8, Math.abs(sector.change) * 18))}%` }} /></div></div>)}</div></Panel>
-    </div>
-  </>;
-}
-
-function ScreenersView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks' | 'onInspect'>) {
   const [query, setQuery] = useState('');
   const [signal, setSignal] = useState<'all' | 'bullish' | 'bearish'>('all');
   const [sort, setSort] = useState<'signal' | 'momentum' | 'volume'>('signal');
@@ -77,11 +66,228 @@ function ScreenersView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stock
     return matchesQuery && matchesSignal;
   }).sort((a, b) => sort === 'momentum' ? b.momentum - a.momentum : sort === 'volume' ? b.stock.volume - a.stock.volume : b.signalScore - a.signalScore), [stocks, query, signal, sort]);
 
-  return <>
-    <ViewHeading eyebrow="Discovery" title="Signal screener" description="Turn technical signals into a focused shortlist. Search, filter, and rank your universe without duplicating the portfolio table." />
-    <Panel className="mb-4 p-4"><div className="grid gap-3 md:grid-cols-[1fr_auto_auto]"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter symbol, company, or sector" className="h-10 w-full rounded-[7px] border border-white/[.1] bg-black/20 pl-10 pr-3 text-sm text-white outline-none focus:border-lime-300/40" /></label><select value={signal} onChange={event => setSignal(event.target.value as typeof signal)} className="h-10 rounded-[7px] border border-white/[.1] bg-[#101719] px-3 text-sm text-white"><option value="all">All signals</option><option value="bullish">Buy signals</option><option value="bearish">Sell signals</option></select><select value={sort} onChange={event => setSort(event.target.value as typeof sort)} className="h-10 rounded-[7px] border border-white/[.1] bg-[#101719] px-3 text-sm text-white"><option value="signal">Strongest signal</option><option value="momentum">1M momentum</option><option value="volume">Volume</option></select></div></Panel>
-    <Panel className="overflow-hidden"><div className="flex items-center justify-between border-b border-white/[.07] px-5 py-4"><span className="flex items-center gap-2 text-sm font-medium text-white"><Filter className="h-4 w-4 text-lime-300/70" />Matches</span><span className="font-mono text-xs text-[var(--text-tertiary)]">{results.length} symbols</span></div><div className="overflow-x-auto"><table className="data-table min-w-full"><thead><tr>{['Symbol', 'Signal', 'Confidence', '1M momentum', '30D volatility', 'Volume', ''].map(label => <th key={label} className="border-b border-white/[.07] px-4 py-3">{label}</th>)}</tr></thead><tbody>{results.map(({ stock, analysis, momentum }) => <tr key={stock.ticker} className="hover:bg-white/[.035]"><td className="px-4 py-3 !text-left"><span className="flex items-center gap-3"><CompanyMark ticker={stock.ticker} size={26} /><span><b className="block text-white">{stock.ticker}</b><span className="text-[11px] text-[var(--text-tertiary)]">{stock.sector}</span></span></span></td><td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${analysis.recommendation.toLowerCase().includes('buy') ? 'bg-emerald-400/10 text-emerald-300' : analysis.recommendation.toLowerCase().includes('sell') ? 'bg-red-400/10 text-red-300' : 'bg-white/[.06] text-[var(--text-secondary)]'}`}>{analysis.recommendation}</span></td><td className="px-4 py-3 font-mono text-white">{analysis.confidence}%</td><td className={`px-4 py-3 font-mono ${momentum >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{momentum >= 0 ? '+' : ''}{momentum.toFixed(2)}%</td><td className="px-4 py-3 font-mono text-[var(--text-secondary)]">{volatility(stock).toFixed(1)}%</td><td className="px-4 py-3 font-mono text-[var(--text-secondary)]">{stock.volume.toLocaleString()}</td><td className="px-4 py-3"><button onClick={() => onInspect(stock.ticker)} className="whitespace-nowrap rounded-[6px] border border-white/[.1] px-3 py-1.5 text-xs text-white hover:bg-white/[.06]">Inspect</button></td></tr>)}</tbody></table>{results.length === 0 && <p className="p-10 text-center text-sm text-[var(--text-tertiary)]">No symbols match those filters.</p>}</div></Panel>
-  </>;
+  return (
+    <>
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <Tile label="Breadth"><span className={advancing >= stocks.length / 2 ? 'text-gain' : 'text-loss'}>{advancing}/{stocks.length} advancing</span></Tile>
+        <Tile label="Average move"><Delta value={averageMove}>{formatSignedPercent(averageMove)}</Delta></Tile>
+        <Tile label="Combined volume">{totalVolume >= 1e6 ? `${(totalVolume / 1e6).toFixed(1)}M` : totalVolume.toLocaleString()}</Tile>
+      </div>
+
+      <section className="panel mb-4 overflow-hidden" aria-label="Signal screener">
+        <div className="grid gap-3 border-b border-line p-4 md:grid-cols-[1fr_auto_auto]">
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" aria-hidden="true" />
+            <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter symbol, company, or sector" aria-label="Filter symbol, company, or sector" className="field pl-10" />
+          </label>
+          <select value={signal} onChange={event => setSignal(event.target.value as typeof signal)} aria-label="Signal" className="field md:w-auto">
+            <option value="all">All signals</option>
+            <option value="bullish">Buy signals</option>
+            <option value="bearish">Sell signals</option>
+          </select>
+          <select value={sort} onChange={event => setSort(event.target.value as typeof sort)} aria-label="Sort by" className="field md:w-auto">
+            <option value="signal">Strongest signal</option>
+            <option value="momentum">1M momentum</option>
+            <option value="volume">Volume</option>
+          </select>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3 sm:px-5">
+          <h3 className="text-sm font-semibold text-ink">Matches</h3>
+          <span className="eyebrow">{results.length} symbols</span>
+        </div>
+        <div className="overflow-x-auto border-t border-line">
+          <table className="data-table min-w-full">
+            <thead>
+              <tr>{['Symbol', 'Signal', 'Confidence', '1M momentum', '30D volatility', 'Volume', ''].map(label => <th key={label} className="whitespace-nowrap border-b border-line px-4 py-3">{label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {results.map(({ stock, analysis, momentum }) => (
+                <tr key={stock.ticker}>
+                  <td className="px-4 py-2 !text-left">
+                    <span className="flex items-center gap-3">
+                      <CompanyMark ticker={stock.ticker} size={28} />
+                      <span>
+                        <b className="block font-medium text-ink">{stock.ticker}</b>
+                        <span className="font-sans text-xs text-ink-dim">{stock.sector}</span>
+                      </span>
+                    </span>
+                  </td>
+                  <td className="px-4 py-2"><SignalChip recommendation={analysis.recommendation} /></td>
+                  <td className="px-4 py-2 text-ink">{analysis.confidence}%</td>
+                  <td className="px-4 py-2"><Delta value={momentum}>{formatSignedPercent(momentum)}</Delta></td>
+                  <td className="px-4 py-2 text-ink-muted">{volatility(stock).toFixed(1)}%</td>
+                  <td className="px-4 py-2 text-ink-muted">{stock.volume.toLocaleString()}</td>
+                  <td className="px-4 py-2"><button type="button" onClick={() => onInspect(stock.ticker)} className="btn btn-secondary btn-sm font-sans">Inspect</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {results.length === 0 && <p className="p-10 text-center text-sm text-ink-muted">No symbols match those filters.</p>}
+        </div>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
+        <section className="panel overflow-hidden">
+          <div className="border-b border-line px-4 py-4 sm:px-5">
+            <h3 className="text-sm font-semibold text-ink">Leader board</h3>
+            <p className="mt-1 text-xs text-ink-dim">Ranked by today&apos;s move</p>
+          </div>
+          <div className="divide-y divide-line">
+            {ranked.map((stock, index) => {
+              const move = changePercent(stock);
+              return (
+                <button key={stock.ticker} type="button" onClick={() => onInspect(stock.ticker)} className="grid min-h-14 w-full grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-2 px-4 py-2.5 text-left hover:bg-raised sm:grid-cols-[28px_1fr_auto_auto] sm:gap-3 sm:px-5">
+                  <span className="num text-xs text-ink-dim">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="flex min-w-0 items-center gap-2 sm:gap-3">
+                    <CompanyMark ticker={stock.ticker} size={28} />
+                    <span className="min-w-0">
+                      <span className="num block text-sm font-medium text-ink">{stock.ticker}</span>
+                      <span className="block truncate text-xs text-ink-dim">{stock.sector}</span>
+                    </span>
+                  </span>
+                  <span className="num hidden text-sm text-ink sm:block">${stock.currentPrice.toFixed(2)}</span>
+                  <Delta value={move} className="justify-end text-sm sm:min-w-24">{formatSignedPercent(move)}</Delta>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="panel p-4 sm:p-5">
+          <h3 className="mb-5 text-sm font-semibold text-ink">Sector tape</h3>
+          <div className="space-y-4">
+            {sectors.map(sector => (
+              <div key={sector.name}>
+                <div className="mb-1.5 flex justify-between gap-3 text-xs">
+                  <span className="truncate text-ink-muted">{sector.name}</span>
+                  <Delta value={sector.change}>{formatSignedPercent(sector.change)}</Delta>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-raised">
+                  <div className={`h-full rounded-full ${sector.change >= 0 ? 'bg-gain' : 'bg-loss'}`} style={{ width: `${Math.min(100, Math.max(8, Math.abs(sector.change) * 18))}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/** Risk: how concentrated and how volatile the portfolio is. */
+function RiskView({ stocks, quantities, totalValue, cash, onInspect }: Omit<PrimaryWorkspaceProps, 'view' | 'loading'>) {
+  const holdings = stocks.map(stock => ({ stock, value: stock.currentPrice * (quantities[stock.ticker] ?? 0) })).filter(item => item.value > 0).sort((a, b) => b.value - a.value);
+  const invested = Math.max(0, totalValue - cash);
+  const weightedVolatility = invested > 0 ? holdings.reduce((sum, item) => sum + volatility(item.stock) * item.value / invested, 0) : 0;
+  const largestWeight = totalValue > 0 ? (holdings[0]?.value ?? 0) / totalValue * 100 : 0;
+  const diversification = Math.max(0, 100 - holdings.reduce((sum, item) => sum + ((item.value / Math.max(invested, 1)) * 100) ** 2, 0) / 100);
+
+  if (holdings.length === 0) {
+    return (
+      <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
+        <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><PieChart className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
+        <h3 className="text-base font-semibold text-ink">No holdings to analyse yet</h3>
+        <p className="max-w-md text-sm leading-6 text-ink-muted">Add share quantities to see allocation analytics: how concentrated your portfolio is, how volatile it has been, and a diversification score.</p>
+      </div>
+    );
+  }
+
+  const ringLength = 2 * Math.PI * 52;
+  const ringShown = Math.min(100, diversification) / 100;
+
+  return (
+    <>
+      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Tile label="Invested">${invested.toLocaleString(undefined, { maximumFractionDigits: 0 })}</Tile>
+        <Tile label="Cash reserve">{totalValue > 0 ? `${(cash / totalValue * 100).toFixed(1)}%` : '0.0%'}</Tile>
+        <Tile label="Largest position">{largestWeight.toFixed(1)}%</Tile>
+        <Tile label="Weighted volatility">{weightedVolatility.toFixed(1)}%</Tile>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
+        <section className="panel p-4 sm:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-ink">Position concentration</h3>
+            <span className="eyebrow">Share of portfolio value</span>
+          </div>
+          <div className="space-y-1">
+            {holdings.map(({ stock, value }) => {
+              const weight = totalValue > 0 ? value / totalValue * 100 : 0;
+              return (
+                <button key={stock.ticker} type="button" onClick={() => onInspect(stock.ticker)} className="block w-full rounded-control px-2 py-2.5 text-left hover:bg-raised">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="num flex items-center gap-2 text-sm font-medium text-ink"><CompanyMark ticker={stock.ticker} size={22} />{stock.ticker}</span>
+                    <span className="num text-xs text-ink-muted">{weight.toFixed(1)}% · ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-raised"><div className="h-full rounded-full bg-ink" style={{ width: `${Math.max(1, weight)}%` }} /></div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="panel p-4 sm:p-5">
+          <h3 className="text-sm font-semibold text-ink">Risk check</h3>
+          <div className="relative mx-auto my-6 h-36 w-36">
+            <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" aria-hidden="true">
+              <circle cx="60" cy="60" r="52" fill="none" strokeWidth="8" className="stroke-raised" />
+              <circle cx="60" cy="60" r="52" fill="none" strokeWidth="8" strokeLinecap="round" strokeDasharray={ringLength} strokeDashoffset={ringLength * (1 - ringShown)} className="stroke-accent" />
+            </svg>
+            <div className="absolute inset-0 grid place-items-center text-center">
+              <div>
+                <p className="num text-3xl text-ink">{diversification.toFixed(0)}</p>
+                <p className="eyebrow mt-1">diversification</p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3 border-t border-line pt-4 text-sm leading-6">
+            {largestWeight > 40
+              ? <p className="flex gap-2 text-warn"><AlertTriangle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />One position represents over 40% of the portfolio.</p>
+              : <p className="flex gap-2 text-gain"><ShieldCheck className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />No single position crosses the 40% concentration threshold.</p>}
+            <p className="text-xs leading-5 text-ink-dim">This is a descriptive risk view, not investment advice.</p>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
+
+/** Insights: the old Markets and Screeners views (Signals) and Analytics (Risk) under one roof. */
+function InsightsView({ stocks, loading, quantities, totalValue, cash, onInspect }: Omit<PrimaryWorkspaceProps, 'view'>) {
+  const [section, setSection] = useState<'signals' | 'risk'>('signals');
+
+  return (
+    <>
+      <ViewHeading
+        eyebrow="Insights"
+        title={section === 'signals' ? 'Signals and movers' : 'Risk and allocation'}
+        description={section === 'signals'
+          ? 'Breadth, leadership and technical signals across the symbols in this portfolio. Search, filter and rank them, then inspect one.'
+          : 'A decision layer focused on concentration and volatility, not another holdings table.'}
+      >
+        <div className="flex shrink-0 self-start rounded-full border border-line p-1 sm:self-auto" role="group" aria-label="Insights section">
+          <button type="button" className="seg" aria-pressed={section === 'signals'} onClick={() => setSection('signals')}>Signals</button>
+          <button type="button" className="seg" aria-pressed={section === 'risk'} onClick={() => setSection('risk')}>Risk</button>
+        </div>
+      </ViewHeading>
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-3" aria-busy="true" aria-label="Loading insights">
+          {[0, 1, 2].map(index => <div key={index} className="skeleton h-24" />)}
+          <div className="skeleton h-72 sm:col-span-3" />
+        </div>
+      ) : stocks.length === 0 ? (
+        <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
+          <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Search className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
+          <h3 className="text-base font-semibold text-ink">Nothing to analyse yet</h3>
+          <p className="max-w-md text-sm leading-6 text-ink-muted">This portfolio has no symbols. Add one on the Portfolio tab and its signals, movers and risk appear here.</p>
+        </div>
+      ) : section === 'signals' ? (
+        <SignalsView stocks={stocks} onInspect={onInspect} />
+      ) : (
+        <RiskView stocks={stocks} quantities={quantities} totalValue={totalValue} cash={cash} onInspect={onInspect} />
+      )}
+    </>
+  );
 }
 
 function NewsView() {
@@ -98,36 +304,44 @@ function NewsView() {
     }).then(data => { if (active) setItems(Array.isArray(data) ? data.slice(0, 12) : []); }).catch(() => { if (active) setError(true); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
-  return <>
-    <ViewHeading eyebrow="News desk" title="The market, beyond one ticker" description="A broad market feed for context and catalysts. Company-specific stories remain in the Watchlist research panel." />
-    {loading ? <Panel className="grid min-h-64 place-items-center"><span className="flex items-center gap-2 text-sm text-[var(--text-secondary)]"><Activity className="h-4 w-4 animate-pulse" />Loading the latest coverage…</span></Panel> : error || items.length === 0 ? <Panel className="p-10 text-center"><Newspaper className="mx-auto mb-4 h-7 w-7 text-lime-300/60" /><h3 className="font-semibold text-white">Market news needs a live data key</h3><p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-[var(--text-secondary)]">Add a Finnhub API key to <code className="rounded bg-white/[.06] px-1.5 py-0.5 text-xs">VITE_FINNHUB_API_KEY</code> to populate this desk. Stock research and demo analytics continue to work without it.</p></Panel> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{items.map((item, index) => <a key={`${item.datetime}-${item.headline}`} href={item.url} target="_blank" rel="noreferrer" className={`group overflow-hidden rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] hover:border-white/[.2] ${index === 0 ? 'md:col-span-2' : ''}`}>{item.image && <img src={item.image} alt="" className={`w-full object-cover opacity-80 transition-opacity group-hover:opacity-100 ${index === 0 ? 'h-56' : 'h-36'}`} />}<div className="p-5"><div className="mb-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[.12em] text-lime-300/70"><span>{item.source || 'Market news'}</span><ExternalLink className="h-3.5 w-3.5" /></div><h3 className={`${index === 0 ? 'text-xl' : 'text-base'} font-semibold leading-snug text-white`}>{item.headline}</h3>{item.summary && <p className="mt-2 line-clamp-3 text-sm leading-6 text-[var(--text-secondary)]">{item.summary}</p>}<time className="mt-4 block text-xs text-[var(--text-tertiary)]">{new Date(item.datetime * 1000).toLocaleString()}</time></div></a>)}</div>}
-  </>;
-}
 
-function AnalyticsView({ stocks, quantities, totalValue, cash, onInspect }: Omit<PrimaryWorkspaceProps, 'view'>) {
-  const holdings = stocks.map(stock => ({ stock, value: stock.currentPrice * (quantities[stock.ticker] ?? 0) })).filter(item => item.value > 0).sort((a, b) => b.value - a.value);
-  const invested = Math.max(0, totalValue - cash);
-  const weightedVolatility = invested > 0 ? holdings.reduce((sum, item) => sum + volatility(item.stock) * item.value / invested, 0) : 0;
-  const largestWeight = totalValue > 0 ? (holdings[0]?.value ?? 0) / totalValue * 100 : 0;
-  const diversification = Math.max(0, 100 - holdings.reduce((sum, item) => sum + ((item.value / Math.max(invested, 1)) * 100) ** 2, 0) / 100);
-  return <>
-    <ViewHeading eyebrow="Portfolio intelligence" title="Risk and allocation" description="A decision layer focused on concentration and volatility—not another holdings table." />
-    <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
-      { label: 'Invested', value: `$${invested.toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
-      { label: 'Cash reserve', value: totalValue > 0 ? `${(cash / totalValue * 100).toFixed(1)}%` : '0.0%' },
-      { label: 'Largest position', value: `${largestWeight.toFixed(1)}%` },
-      { label: 'Weighted volatility', value: `${weightedVolatility.toFixed(1)}%` },
-    ].map(item => <Panel key={item.label} className="p-5"><p className="text-xs text-[var(--text-tertiary)]">{item.label}</p><p className="mt-2 font-mono text-xl text-white">{item.value}</p></Panel>)}</div>
-    <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
-      <Panel className="p-5"><div className="mb-6 flex items-center justify-between"><h3 className="font-semibold text-white">Position concentration</h3><span className="text-xs text-[var(--text-tertiary)]">Share of portfolio value</span></div><div className="space-y-5">{holdings.map(({ stock, value }) => { const weight = totalValue > 0 ? value / totalValue * 100 : 0; return <button key={stock.ticker} onClick={() => onInspect(stock.ticker)} className="block w-full text-left"><div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-semibold text-white"><CompanyMark ticker={stock.ticker} size={22} />{stock.ticker}</span><span className="font-mono text-xs text-[var(--text-secondary)]">{weight.toFixed(1)}% · ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div><div className="h-2 overflow-hidden rounded-full bg-white/[.06]"><div className="h-full rounded-full bg-lime-300" style={{ width: `${Math.max(1, weight)}%` }} /></div></button>})}{holdings.length === 0 && <p className="py-10 text-center text-sm text-[var(--text-tertiary)]">Add share quantities to see allocation analytics.</p>}</div></Panel>
-      <Panel className="p-5"><h3 className="font-semibold text-white">Risk check</h3><div className="my-7 grid place-items-center"><div className="grid h-36 w-36 place-items-center rounded-full border-[10px] border-lime-300/15" style={{ borderTopColor: 'var(--accent)', transform: `rotate(${Math.min(90, diversification) * 1.8 - 90}deg)` }}><div className="text-center" style={{ transform: `rotate(${-Math.min(90, diversification) * 1.8 + 90}deg)` }}><p className="font-mono text-2xl text-white">{diversification.toFixed(0)}</p><p className="text-[10px] uppercase tracking-wider text-[var(--text-tertiary)]">diversification</p></div></div></div><div className="space-y-3 border-t border-white/[.07] pt-4 text-sm">{largestWeight > 40 ? <p className="flex gap-2 text-amber-200"><ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0" />One position represents over 40% of the portfolio.</p> : <p className="flex gap-2 text-emerald-200"><ArrowDownRight className="mt-0.5 h-4 w-4 shrink-0" />No single position crosses the 40% concentration threshold.</p>}<p className="text-xs leading-5 text-[var(--text-tertiary)]">This is a descriptive risk view, not investment advice.</p></div></Panel>
-    </div>
-  </>;
+  return (
+    <>
+      <ViewHeading eyebrow="News desk" title="The market, beyond one ticker" description="A broad market feed for context and catalysts. Company-specific stories are in each stock's News tab on the Portfolio screen." />
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Loading the latest coverage">
+          <div className="skeleton h-80 md:col-span-2" />
+          {[0, 1, 2, 3].map(index => <div key={index} className="skeleton h-80" />)}
+        </div>
+      ) : error || items.length === 0 ? (
+        <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
+          <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Newspaper className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
+          <h3 className="text-base font-semibold text-ink">Market news needs a live data key</h3>
+          <p className="max-w-lg text-sm leading-6 text-ink-muted">Add a Finnhub API key to <code className="rounded-[5px] bg-raised px-1.5 py-0.5 font-mono text-xs text-ink">VITE_FINNHUB_API_KEY</code> to populate this desk. Stock research and demo analytics continue to work without it.</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((item, index) => (
+            <a key={`${item.datetime}-${item.headline}`} href={item.url} target="_blank" rel="noreferrer" className={`panel group overflow-hidden hover:border-line-strong ${index === 0 ? 'md:col-span-2' : ''}`}>
+              {item.image && <img src={item.image} alt="" loading="lazy" className={`w-full object-cover opacity-85 transition-opacity group-hover:opacity-100 ${index === 0 ? 'h-56' : 'h-36'}`} />}
+              <div className="p-5">
+                <div className="eyebrow mb-3 flex items-center justify-between gap-3">
+                  <span className="truncate">{item.source || 'Market news'}</span>
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                </div>
+                <h3 className={`${index === 0 ? 'text-xl' : 'text-base'} font-semibold leading-snug tracking-[-0.015em] text-ink`}>{item.headline}</h3>
+                {item.summary && <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink-muted">{item.summary}</p>}
+                <time className="num mt-4 block text-xs text-ink-dim">{new Date(item.datetime * 1000).toLocaleString()}</time>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </>
+  );
 }
 
 export default function PrimaryWorkspace(props: PrimaryWorkspaceProps) {
-  if (props.view === 'markets') return <MarketsView stocks={props.stocks} onInspect={props.onInspect} />;
-  if (props.view === 'screeners') return <ScreenersView stocks={props.stocks} onInspect={props.onInspect} />;
   if (props.view === 'news') return <NewsView />;
-  return <AnalyticsView {...props} />;
+  return <InsightsView stocks={props.stocks} loading={props.loading} quantities={props.quantities} totalValue={props.totalValue} cash={props.cash} onInspect={props.onInspect} />;
 }

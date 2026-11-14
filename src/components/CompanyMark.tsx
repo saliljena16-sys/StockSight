@@ -7,6 +7,7 @@ interface CompanyMarkProps {
   className?: string;
 }
 
+/** A company's logo on a light tile (so dark logos stay visible), or its initials if there is none. */
 export default function CompanyMark({ ticker, size = 26, className = '' }: CompanyMarkProps) {
   const [imageFailed, setImageFailed] = useState(false);
   const company = getCompanyMetadata(ticker);
@@ -18,7 +19,7 @@ export default function CompanyMark({ ticker, size = 26, className = '' }: Compa
     <span
       aria-hidden="true"
       style={{ width: size, height: size }}
-      className={`grid shrink-0 place-items-center overflow-hidden rounded-[6px] border border-white/[.1] bg-[#f5f7f4] shadow-[0_1px_8px_rgba(0,0,0,.18)] ${className}`}
+      className={`grid shrink-0 place-items-center overflow-hidden rounded-[6px] bg-ink ${className}`}
     >
       {company.domain && !imageFailed ? (
         <img
@@ -28,7 +29,7 @@ export default function CompanyMark({ ticker, size = 26, className = '' }: Compa
           onError={() => setImageFailed(true)}
         />
       ) : (
-        <span className="font-mono text-[9px] font-bold tracking-[-.05em] text-[#162019]">
+        <span className="font-mono text-[9px] font-bold tracking-[-.05em] text-canvas">
           {symbol.slice(0, 2)}
         </span>
       )}

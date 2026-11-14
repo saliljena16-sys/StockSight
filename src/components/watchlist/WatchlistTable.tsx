@@ -1,3 +1,4 @@
+import { Plus } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
 import type { PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import type { Transaction } from '../../types/portfolio';
@@ -9,6 +10,7 @@ import PerformanceTable from './PerformanceTable';
 
 interface WatchlistTableProps {
   tableTab: WatchlistTableTab;
+  onSelectTab: (tab: WatchlistTableTab) => void;
   /** Every loaded stock in the active portfolio. */
   stocks: StockInfo[];
   /** Stocks in the selected sector (only the Summary tab's table uses this, and shows the filter). */
@@ -16,7 +18,7 @@ interface WatchlistTableProps {
   sectorFilter: string;
   availableSectors: string[];
   onSectorChange: (sector: string) => void;
-  onAddTickers: () => void;
+  onAddHolding: () => void;
   summary: PortfolioSummaryData;
   sectorAllocation: Array<[string, number]>;
   transactions: Transaction[];
@@ -28,15 +30,23 @@ interface WatchlistTableProps {
   onCashChange: (value: string) => void;
 }
 
-/** The watchlist's table view: the active tab's table, with an add button on the per-stock tabs. */
+const TABS: Array<{ label: string; value: WatchlistTableTab }> = [
+  { label: 'Summary', value: 'summary' },
+  { label: 'Holdings', value: 'holdings' },
+  { label: 'Key Stats', value: 'keyStats' },
+  { label: 'Performance', value: 'performance' },
+];
+
+/** The portfolio's detailed tables, below the holdings and chart: tabs plus the active tab's table. */
 export default function WatchlistTable({
   tableTab,
+  onSelectTab,
   stocks,
   filteredStocks,
   sectorFilter,
   availableSectors,
   onSectorChange,
-  onAddTickers,
+  onAddHolding,
   summary,
   sectorAllocation,
   transactions,
@@ -48,17 +58,25 @@ export default function WatchlistTable({
   onCashChange,
 }: WatchlistTableProps) {
   return (
-    <div className="mb-7 overflow-hidden rounded-[10px] border border-white/[.1] bg-[var(--surface-1)]">
-      {tableTab !== 'summary' && <div className="flex items-center justify-end gap-3 border-b border-white/[.07] px-4 py-3 sm:px-5">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onAddTickers}
-            className="rounded-[7px] border border-white/[.1] bg-white/[.04] px-3 py-2 text-xs font-medium text-white hover:bg-white/[.08]"
-          >
-            + Add tickers
-          </button>
+    <section aria-label="Portfolio tables" className="panel mt-4 overflow-hidden">
+      <div className="flex items-center justify-between gap-4 border-b border-line px-4 sm:px-5">
+        <div className="mobile-scroll flex items-center gap-5 overflow-x-auto" role="group" aria-label="Portfolio tables">
+          {TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => onSelectTab(tab.value)}
+              aria-pressed={tableTab === tab.value}
+              className="tab lg:min-h-12"
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-      </div>}
+        <button type="button" onClick={onAddHolding} className="btn btn-secondary btn-sm hidden shrink-0 sm:inline-flex">
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />Add holding
+        </button>
+      </div>
 
       <div className="overflow-x-auto">
         {tableTab === 'summary' && (
@@ -91,6 +109,6 @@ export default function WatchlistTable({
           <PerformanceTable stocks={stocks} selectedTicker={selectedTicker} onSelect={onSelect} />
         )}
       </div>
-    </div>
+    </section>
   );
 }

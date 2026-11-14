@@ -8,19 +8,18 @@ interface SymbolSearchOptions {
 }
 
 /**
- * The header symbol search, shared by the desktop and mobile inputs. Ctrl/Cmd+K focuses whichever
- * input is visible; submitting selects a listed ticker or adds a new one.
+ * The header symbol search. Ctrl/Cmd+K focuses the search field (one input serves every width);
+ * submitting selects a listed ticker or adds a new one.
  */
 export function useSymbolSearch({ activeTickers, onSelect, onAdd }: SymbolSearchOptions) {
   const [query, setQuery] = useState('');
-  const desktopInputRef = useRef<HTMLInputElement>(null);
-  const mobileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const handleCommandSearch = (event: KeyboardEvent) => {
       if (isSearchShortcut(event)) {
         event.preventDefault();
-        (window.innerWidth < 1024 ? mobileInputRef.current : desktopInputRef.current)?.focus();
+        inputRef.current?.focus();
       }
     };
 
@@ -39,5 +38,5 @@ export function useSymbolSearch({ activeTickers, onSelect, onAdd }: SymbolSearch
     setQuery('');
   };
 
-  return { query, setQuery, submit, desktopInputRef, mobileInputRef };
+  return { query, setQuery, submit, inputRef };
 }

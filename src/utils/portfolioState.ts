@@ -3,6 +3,7 @@
 import type { HoldingMap, PortfolioMap, PortfolioState } from './portfolioDb';
 // Explicit extension so the Node test runner can load this module directly.
 import { portfolioNameError } from './portfolioNames.ts';
+import { formatCurrency, formatShares } from './format.ts';
 import type {
   PortfolioAverageCosts,
   PortfolioCash,
@@ -57,6 +58,18 @@ export function omitTicker<T>(prev: Record<string, Record<string, T>>, portfolio
   const current = prev[portfolio] ?? {};
   const { [ticker]: _removed, ...rest } = current;
   return { ...prev, [portfolio]: rest };
+}
+
+/**
+ * What removing a stock from a portfolio would also delete, for the confirmation under "Remove
+ * AAPL?": its shares and average cost. Null when it holds no shares, so a stock that is only
+ * watched is removed without asking.
+ */
+export function removeStockWarning(quantity: number | undefined, averageCost: number | undefined): string | null {
+  if (!quantity || quantity <= 0) return null;
+  const shares = `${formatShares(quantity)} ${quantity === 1 ? 'share' : 'shares'}`;
+  const cost = averageCost === undefined ? '' : ` and average cost (${formatCurrency(averageCost)})`;
+  return `This also deletes your ${shares}${cost}.`;
 }
 
 export function setAverageCost(prev: PortfolioAverageCosts, portfolio: string, ticker: string, averageCost: number): PortfolioAverageCosts {

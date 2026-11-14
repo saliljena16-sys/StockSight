@@ -11,6 +11,7 @@ import {
   PORTFOLIO_STATE_VERSION,
   omitKey,
   omitTicker,
+  removeStockWarning,
   prependTransaction,
   removeTicker,
   renamePortfolioIn,
@@ -207,4 +208,16 @@ test('saved holdings round-trip through the share-count and cost maps', () => {
   });
   assert.deepEqual(Object.keys(state), ['portfolios', 'holdings', 'cash', 'transactions', 'version']);
   assert.deepEqual(state.holdings, { Core: { AAPL: { quantity: 2, averageCost: 150 }, KO: { quantity: 1, averageCost: 0 } }, Empty: {} });
+});
+
+test('removing a stock with shares warns about the shares and average cost it deletes', () => {
+  assert.equal(removeStockWarning(12, 150), 'This also deletes your 12 shares and average cost ($150.00).');
+  assert.equal(removeStockWarning(1, 1234.5), 'This also deletes your 1 share and average cost ($1,234.50).');
+  assert.equal(removeStockWarning(2.5, undefined), 'This also deletes your 2.5 shares.');
+});
+
+test('removing a stock with no shares needs no confirmation', () => {
+  assert.equal(removeStockWarning(undefined, undefined), null);
+  assert.equal(removeStockWarning(0, 150), null);
+  assert.equal(removeStockWarning(-1, 150), null);
 });

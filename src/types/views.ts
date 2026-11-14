@@ -5,7 +5,7 @@
 export type PrimaryView = 'portfolio' | 'insights' | 'news';
 
 /** Tabs in the selected-stock detail panel. */
-export type DetailTab = 'chart' | 'analysis' | 'forecast' | 'compare';
+export type DetailTab = 'chart' | 'analysis' | 'forecast' | 'compare' | 'news';
 
 /** Tabs of the portfolio tables below the holdings and chart. */
 export type WatchlistTableTab = 'summary' | 'holdings' | 'keyStats' | 'performance';

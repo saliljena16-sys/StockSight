@@ -3,6 +3,7 @@ import { createChart, CandlestickSeries, LineSeries, IChartApi, ISeriesApi } fro
 import { StockDataPoint } from '../utils/mockData';
 import { AnalysisResult } from '../utils/technicalAnalysis';
 import { toCandleData, toLineData } from '../utils/chartData';
+import { readColorToken, readToken } from '../theme/tokens';
 import HistoryUnavailable from './HistoryUnavailable';
 
 interface ChartSeries {
@@ -23,6 +24,12 @@ interface CandlestickChartProps {
 type ChartRange = '1D' | '5D' | '1M' | '6M' | 'YTD' | '1Y' | '5Y' | 'ALL';
 
 const CHART_RANGES: ChartRange[] = ['1D', '5D', '1M', '6M', 'YTD', '1Y', '5Y', 'ALL'];
+
+// The chart's height follows the viewport so the whole chart sits on the first screen:
+// taller on tall windows, never smaller than a readable minimum.
+const CHART_HEIGHT = 'h-[clamp(13.5rem,calc(100svh-39rem),20rem)] md:h-[clamp(18rem,calc(100svh-40rem),26rem)] lg:h-[clamp(17rem,calc(100svh-34rem),34rem)]';
+// The same heights as a minimum, for the "history unavailable" message that replaces the chart.
+const EMPTY_STATE_HEIGHT = 'min-h-[clamp(13.5rem,calc(100svh-39rem),20rem)] md:min-h-[clamp(18rem,calc(100svh-40rem),26rem)] lg:min-h-[clamp(17rem,calc(100svh-34rem),34rem)]';
 
 function getRangeStart(range: ChartRange, latestDate: Date): Date | null {
   const start = new Date(latestDate);
@@ -59,61 +66,67 @@ export default function CandlestickChart({ data, analysis, ticker, unavailableRe
 
   // Create the chart once while there is data to show. Re-renders (typing in search, the 60-second
   // quote refresh) never rebuild it; the effect below only feeds new data into its series.
+  // Colours and the font come from the design tokens; the size follows the container.
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container) return;
 
-    const getChartHeight = () => Math.min(540, Math.max(360, container.clientWidth * 0.5));
+    const gain = readColorToken('--color-gain');
+    const loss = readColorToken('--color-loss');
+    const line = readColorToken('--color-line');
+    const lineStrong = readColorToken('--color-line-strong');
+    const labelBackground = readColorToken('--color-raised');
+    const fontFamily = readToken('--font-mono');
+
     const chart = createChart(container, {
+      autoSize: true,
       layout: {
-        background: { color: '#0e171a' },
-        textColor: '#7f8981',
-        fontFamily: "'DM Mono', monospace",
+        background: { color: readColorToken('--color-surface') },
+        textColor: readColorToken('--color-ink-dim'),
+        fontFamily,
+        fontSize: 11,
       },
       grid: {
-        vertLines: { color: '#1b292d' },
-        horzLines: { color: '#1b292d' },
+        vertLines: { color: line },
+        horzLines: { color: line },
       },
       crosshair: {
-        vertLine: { color: '#586159', width: 1, style: 2, labelBackgroundColor: '#303731' },
-        horzLine: { color: '#586159', width: 1, style: 2, labelBackgroundColor: '#303731' },
+        vertLine: { color: lineStrong, width: 1, style: 2, labelBackgroundColor: labelBackground },
+        horzLine: { color: lineStrong, width: 1, style: 2, labelBackgroundColor: labelBackground },
       },
-      rightPriceScale: { borderColor: '#242b25' },
-      timeScale: { borderColor: '#242b25', timeVisible: false },
-      width: container.clientWidth,
-      height: getChartHeight(),
+      rightPriceScale: { borderColor: line },
+      timeScale: { borderColor: line, timeVisible: false },
     });
 
     chartRef.current = chart;
     fittedViewRef.current = null;
     seriesRef.current = {
       candles: chart.addSeries(CandlestickSeries, {
-        upColor: '#54d99a',
-        downColor: '#f07878',
-        borderDownColor: '#f07878',
-        borderUpColor: '#54d99a',
-        wickDownColor: '#f07878',
-        wickUpColor: '#54d99a',
+        upColor: gain,
+        downColor: loss,
+        borderDownColor: loss,
+        borderUpColor: gain,
+        wickDownColor: loss,
+        wickUpColor: gain,
       }),
       sma50: chart.addSeries(LineSeries, {
-        color: '#e4b75c',
+        color: readColorToken('--color-warn'),
         lineWidth: 2,
         priceLineVisible: false,
       }),
       sma200: chart.addSeries(LineSeries, {
-        color: '#9b8ce8',
+        color: readColorToken('--color-violet'),
         lineWidth: 2,
         priceLineVisible: false,
       }),
     };
 
-    const handleResize = () => {
-      chart.applyOptions({ width: container.clientWidth, height: getChartHeight() });
-    };
-    window.addEventListener('resize', handleResize);
+    // The axis labels are drawn on a canvas, so redraw them once the web font has loaded.
+    void document.fonts?.ready.then(() => {
+      if (chartRef.current === chart) chart.applyOptions({ layout: { fontFamily } });
+    });
 
     return () => {
-      window.removeEventListener('resize', handleResize);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
@@ -140,46 +153,40 @@ export default function CandlestickChart({ data, analysis, ticker, unavailableRe
 
   if (data.length === 0) {
     return (
-      <div className="border-t border-white/[.06] pt-3">
-        <HistoryUnavailable
-          message={`The live quote for ${ticker} is current, but daily candles couldn't be loaded, so the chart, moving averages and signals are hidden. Refresh to try again.`}
-          reason={unavailableReason}
-        />
-      </div>
+      <HistoryUnavailable
+        message={`The live quote for ${ticker} is current, but daily candles couldn't be loaded, so the chart, moving averages and signals are hidden. Refresh to try again.`}
+        reason={unavailableReason}
+        className={EMPTY_STATE_HEIGHT}
+      />
     );
   }
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap gap-2" aria-label="Chart time range">
-        {CHART_RANGES.map(option => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => setRange(option)}
-            aria-pressed={range === option}
-            className={`min-h-10 rounded-[7px] border px-3.5 py-2 text-[13px] font-medium transition-colors ${
-              range === option
-                ? 'border-lime-300/25 bg-lime-300/[.1] text-lime-200'
-                : 'border-transparent bg-transparent text-[#7f8981] hover:border-white/[.08] hover:bg-white/[.035] hover:text-white'
-            }`}
-          >
-            {option}
-          </button>
-        ))}
+      <div className="mb-2 flex items-center justify-between gap-4">
+        {/* On phones the row runs edge to edge of the panel so all eight 44px ranges fit at 390px. */}
+        <div className="mobile-scroll -mx-4 flex overflow-x-auto px-0.5 sm:mx-0 sm:gap-0.5 sm:px-0" role="group" aria-label="Chart time range">
+          {CHART_RANGES.map(option => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setRange(option)}
+              aria-pressed={range === option}
+              className="seg"
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <div className="eyebrow hidden shrink-0 items-center gap-4 sm:flex">
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded-full bg-warn" aria-hidden="true" />SMA 50</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded-full bg-violet" aria-hidden="true" />SMA 200</span>
+        </div>
       </div>
-      <div className="relative border-t border-white/[.06] pt-3">
-      <div className="absolute left-3 top-6 z-10 flex gap-4 text-[11px]">
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-amber-500 inline-block"></span>
-          <span className="text-[#7f8981]">SMA 50</span>
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-violet-500 inline-block"></span>
-          <span className="text-[#7f8981]">SMA 200</span>
-        </span>
-      </div>
-      <div ref={chartContainerRef} className="overflow-hidden" />
+      <div ref={chartContainerRef} className={`overflow-hidden ${CHART_HEIGHT}`} />
+      <div className="eyebrow mt-2 flex items-center gap-4 sm:hidden">
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded-full bg-warn" aria-hidden="true" />SMA 50</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-3 rounded-full bg-violet" aria-hidden="true" />SMA 200</span>
       </div>
     </div>
   );

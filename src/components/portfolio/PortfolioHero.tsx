@@ -40,7 +40,7 @@ function Stat({ label, className = '', children }: { label: string; className?: 
 /** A dollar change with its percentage. The percentage may wrap under the amount on narrow screens. */
 function Change({ amount, percent }: { amount: number; percent: number }) {
   return (
-    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+    <span className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
       <Delta value={amount}>{formatSignedCurrency(amount)}</Delta>
       <span className={`num text-xs sm:text-[13px] ${TONE[directionOf(amount)]}`}>({formatSignedPercent(percent)})</span>
     </span>

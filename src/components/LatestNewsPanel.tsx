@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Clock3, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowRight, Clock3, ExternalLink, Newspaper } from 'lucide-react';
 import CompanyMark from './CompanyMark';
 import type { NewsItem } from '../types/news';
 
@@ -17,14 +17,13 @@ function formatTimeAgo(timestamp: number) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function NewsThumbnail({ src, ticker, prominent }: { src?: string; ticker: string; prominent: boolean }) {
+function NewsThumbnail({ src, ticker }: { src?: string; ticker: string }) {
   const [failed, setFailed] = useState(false);
-  const height = prominent ? 'h-[82px]' : 'h-[64px]';
 
   if (!src || failed) {
     return (
-      <div className={`grid w-full place-items-center rounded-[7px] border border-white/[.08] bg-[var(--surface-2)] ${height}`}>
-        <CompanyMark ticker={ticker} size={prominent ? 38 : 30} />
+      <div className="grid h-16 w-full place-items-center rounded-control border border-line bg-raised">
+        <CompanyMark ticker={ticker} size={28} />
       </div>
     );
   }
@@ -33,69 +32,82 @@ function NewsThumbnail({ src, ticker, prominent }: { src?: string; ticker: strin
     <img
       src={src}
       alt=""
-      className={`w-full rounded-[7px] border border-white/[.08] object-cover ${height}`}
+      loading="lazy"
+      className="h-16 w-full rounded-control border border-line object-cover"
       onError={() => setFailed(true)}
     />
   );
 }
 
+/** The News tab of the stock detail panel: the last week of company headlines. */
 export default function LatestNewsPanel({ ticker, items, loading }: LatestNewsPanelProps) {
-  return (
-    <aside className="h-full rounded-[10px] border border-white/[.1] bg-[var(--surface-1)] p-5 xl:p-6">
-      <div className="flex items-center justify-between border-b border-white/[.08] pb-4">
-        <h2 className="text-lg font-semibold tracking-[-.02em] text-white">Latest News</h2>
-        <span className="font-mono text-xs text-[var(--text-secondary)]">{ticker}</span>
+  if (loading) {
+    return (
+      <div className="grid gap-x-8 xl:grid-cols-2" aria-busy="true" aria-label={`Loading ${ticker} news`}>
+        {[0, 1, 2, 3].map(index => (
+          <div key={index} className="grid grid-cols-[84px_minmax(0,1fr)] gap-3 border-b border-line py-4">
+            <div className="skeleton h-16" />
+            <div className="space-y-2 py-1">
+              <div className="skeleton h-3 w-24" />
+              <div className="skeleton h-4 w-full" />
+              <div className="skeleton h-4 w-2/3" />
+            </div>
+          </div>
+        ))}
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-secondary)]">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading market news…
-        </div>
-      ) : items.length > 0 ? (
-        <div>
-          {items.map((item, index) => (
-            <a
-              key={`${item.source}-${item.datetime}-${item.headline}`}
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              className={`group grid gap-3 border-b border-white/[.07] py-5 ${index === 0 ? 'grid-cols-[104px_minmax(0,1fr)]' : 'grid-cols-[76px_minmax(0,1fr)]'}`}
-            >
-              <NewsThumbnail src={item.image} ticker={ticker} prominent={index === 0} />
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2.5 rounded-control border border-dashed border-line-strong px-6 py-10 text-center">
+        <span className="mb-1 grid h-10 w-10 place-items-center rounded-full border border-line"><Newspaper className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
+        <p className="text-sm font-semibold text-ink">No recent news</p>
+        <p className="max-w-md text-[13px] leading-6 text-ink-muted">No recent company news is available for {ticker} right now.</p>
+      </div>
+    );
+  }
 
-              <div className="min-w-0">
-                <div className="mb-1.5 flex items-center gap-2 text-[11px]">
-                  <span className="font-semibold text-[var(--positive)]">{item.source || 'Market news'}</span>
-                  {item.datetime > 0 && <span className="flex items-center gap-1 text-[var(--text-tertiary)]"><Clock3 className="h-3 w-3" />{formatTimeAgo(item.datetime)}</span>}
-                  <ExternalLink className="ml-auto h-3 w-3 text-[var(--text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100" />
-                </div>
-                <h3 className={`${index === 0 ? 'text-[15px]' : 'text-sm'} font-semibold leading-snug text-[#edf0ed] group-hover:text-white`}>
-                  {item.headline}
-                </h3>
-                {item.summary && (
-                  <p className="mt-2 line-clamp-2 text-[13px] leading-5 text-[var(--text-secondary)]">
-                    {item.summary}
-                  </p>
-                )}
-              </div>
-            </a>
-          ))}
-
+  return (
+    <div>
+      <div className="grid gap-x-8 xl:grid-cols-2">
+        {items.map((item) => (
           <a
-            href={`https://finance.yahoo.com/quote/${ticker}/news/`}
+            key={`${item.source}-${item.datetime}-${item.headline}`}
+            href={item.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-4 inline-flex min-h-10 items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-white"
+            className="group grid grid-cols-[84px_minmax(0,1fr)] gap-3 border-b border-line py-4"
           >
-            View all news <ArrowRight className="h-4 w-4" />
+            <NewsThumbnail src={item.image} ticker={ticker} />
+
+            <div className="min-w-0">
+              <div className="eyebrow mb-1.5 flex items-center gap-2">
+                <span className="truncate text-ink-muted">{item.source || 'Market news'}</span>
+                {item.datetime > 0 && <span className="flex shrink-0 items-center gap-1 normal-case tracking-normal"><Clock3 className="h-3 w-3" aria-hidden="true" />{formatTimeAgo(item.datetime)}</span>}
+                <ExternalLink className="ml-auto h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true" />
+              </div>
+              <h3 className="text-sm font-semibold leading-snug text-ink group-hover:text-ink-bright">
+                {item.headline}
+              </h3>
+              {item.summary && (
+                <p className="mt-1.5 line-clamp-2 text-[13px] leading-5 text-ink-muted">
+                  {item.summary}
+                </p>
+              )}
+            </div>
           </a>
-        </div>
-      ) : (
-        <p className="py-8 text-sm leading-6 text-[var(--text-secondary)]">
-          No recent company news is available for {ticker} right now.
-        </p>
-      )}
-    </aside>
+        ))}
+      </div>
+
+      <a
+        href={`https://finance.yahoo.com/quote/${ticker}/news/`}
+        target="_blank"
+        rel="noreferrer"
+        className="btn btn-quiet btn-sm -ml-3 mt-3"
+      >
+        View all news <ArrowRight className="h-4 w-4" aria-hidden="true" />
+      </a>
+    </div>
   );
 }

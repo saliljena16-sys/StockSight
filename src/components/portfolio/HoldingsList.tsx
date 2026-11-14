@@ -28,7 +28,8 @@ export default function HoldingsList({ stocks, quantities, selectedTicker, onSel
 
   return (
     <section aria-labelledby="holdings-heading" className={`flex min-w-0 flex-col lg:overflow-hidden lg:rounded-panel lg:border lg:border-line lg:bg-surface ${className}`}>
-      <div className="mb-2 flex items-baseline justify-between gap-3 lg:mb-0 lg:border-b lg:border-line lg:px-4 lg:py-3">
+      {/* The label row is visible from laptop width up; on small screens it is for screen readers only, to keep the chart on the first screen. */}
+      <div className="sr-only items-baseline justify-between gap-3 lg:not-sr-only lg:flex lg:border-b lg:border-line lg:px-4 lg:py-3">
         <h2 id="holdings-heading" className="eyebrow text-ink-muted">{heldCount > 0 ? 'Holdings' : 'Watchlist'}</h2>
         <p className="eyebrow">
           {heldCount > 0 && <>{heldCount} held</>}

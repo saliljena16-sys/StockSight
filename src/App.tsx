@@ -161,10 +161,15 @@ export default function App() {
                     <StockDetailPanel
                       selectedStock={selectedStock}
                       stocks={stocksData}
+                      quantity={quantities?.[selectedStock.ticker] ?? 0}
+                      averageCost={averageCosts?.[selectedStock.ticker]}
                       activeTab={view.activeTab}
                       onTabChange={view.setActiveTab}
                       stockNews={stockNews}
                       newsLoading={newsLoading}
+                      onEditHolding={setEditingTicker}
+                      canRemove={activeTickers.length > 1}
+                      onRemove={removeStock}
                     />
                   )}
                 </div>

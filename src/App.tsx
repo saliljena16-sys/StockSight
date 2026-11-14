@@ -17,7 +17,8 @@ import AppFooter from './components/layout/AppFooter';
 import PortfolioHero from './components/portfolio/PortfolioHero';
 import HoldingsList from './components/portfolio/HoldingsList';
 import AddHoldingModal from './components/portfolio/AddHoldingModal';
-import WatchlistLoading from './components/watchlist/WatchlistLoading';
+import PortfolioSkeleton from './components/portfolio/PortfolioSkeleton';
+import EmptyPortfolio from './components/portfolio/EmptyPortfolio';
 import WatchlistTable from './components/watchlist/WatchlistTable';
 import StockDetailPanel from './components/detail/StockDetailPanel';
 import PrimaryWorkspace from './components/PrimaryWorkspace';
@@ -113,6 +114,7 @@ export default function App() {
         onSearchChange={search.setQuery}
         onSearchSubmit={search.submit}
         searchInputRef={search.inputRef}
+        hasQuotes={Boolean(stocksData)}
         hasLiveData={hasLiveData}
         allLiveData={allLiveData}
         isLoading={isLoading}
@@ -144,7 +146,8 @@ export default function App() {
               onLoadSample={loadSampleWatchlist}
             />
 
-            {quotesLoading && <WatchlistLoading />}
+            {quotesLoading && <PortfolioSkeleton rows={activeTickers.length} />}
+            {activeTickers.length === 0 && <EmptyPortfolio />}
 
             {stocksData && (
               <>

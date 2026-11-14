@@ -11,6 +11,8 @@ interface AppHeaderProps {
   onSearchChange: (value: string) => void;
   onSearchSubmit: () => void;
   searchInputRef: RefObject<HTMLInputElement>;
+  /** Quotes have loaded for this portfolio (false while loading, or when it has no stocks). */
+  hasQuotes: boolean;
   hasLiveData: boolean;
   allLiveData: boolean;
   isLoading: boolean;
@@ -34,6 +36,7 @@ export default function AppHeader({
   onSearchChange,
   onSearchSubmit,
   searchInputRef,
+  hasQuotes,
   hasLiveData,
   allLiveData,
   isLoading,
@@ -109,12 +112,12 @@ export default function AppHeader({
                 <Loader2 className="h-3 w-3 animate-spin text-ink-dim" aria-hidden="true" />
                 <span className="eyebrow">Syncing</span>
               </>
-            ) : (
+            ) : hasQuotes ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden="true" />
                 <span className="eyebrow text-warn">Demo data</span>
               </>
-            )}
+            ) : null}
             <span className="num hidden text-xs text-ink-dim xl:inline" title="Last update">{lastUpdate.toLocaleTimeString()}</span>
           </div>
 

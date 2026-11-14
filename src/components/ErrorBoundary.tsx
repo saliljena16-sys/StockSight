@@ -57,20 +57,20 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     return (
       <div
         role="alert"
-        className={`flex flex-col items-center justify-center gap-3 px-6 text-center ${
-          isPage ? 'min-h-screen bg-[var(--canvas)]' : 'min-h-[360px] rounded-[8px] border border-dashed border-white/[.12] bg-[var(--surface-1)] py-10'
+        className={`flex flex-col items-center justify-center gap-2.5 px-6 text-center ${
+          isPage ? 'min-h-screen bg-canvas' : 'min-h-[18rem] rounded-control border border-dashed border-line-strong py-8'
         }`}
       >
-        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-amber-300/25 bg-amber-300/[.06]">
-          <AlertTriangle className="h-4 w-4 text-[var(--warning)]" aria-hidden="true" />
+        <span className="mb-1 grid h-10 w-10 place-items-center rounded-full border border-warn/35">
+          <AlertTriangle className="h-4 w-4 text-warn" aria-hidden="true" />
         </span>
-        <p className="text-sm font-semibold text-white">{title}</p>
-        <p className="max-w-md text-[13px] leading-6 text-[var(--text-secondary)]">{message}</p>
-        <div className="mt-1 flex flex-wrap justify-center gap-2">
+        <p className={`font-semibold text-ink ${isPage ? 'text-xl tracking-[-0.02em]' : 'text-sm'}`}>{title}</p>
+        <p className="max-w-md text-[13px] leading-6 text-ink-muted">{message}</p>
+        <div className="mt-2 flex flex-wrap justify-center gap-2">
           <button
             type="button"
             onClick={() => window.location.reload()}
-            className="inline-flex h-10 items-center gap-2 rounded-[8px] bg-lime-300 px-4 text-sm font-semibold text-[#10140f] hover:bg-lime-200"
+            className="btn btn-primary"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Reload
@@ -79,7 +79,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             <button
               type="button"
               onClick={() => this.setState({ error: null })}
-              className="h-10 rounded-[8px] border border-white/[.12] px-4 text-sm text-white hover:bg-white/[.05]"
+              className="btn btn-secondary"
             >
               Try again
             </button>

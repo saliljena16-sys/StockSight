@@ -105,14 +105,14 @@ export default function AddHoldingModal({ isOpen, onClose, watchlist, onSaveHold
               type="text"
               value={symbol}
               onChange={event => setSymbol(event.target.value.toUpperCase().trim())}
-              placeholder="AAPL"
+              placeholder="e.g. AAPL"
               autoFocus
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
               aria-invalid={symbol.length > 0 && !isValidTicker}
               aria-describedby="add-holding-symbol-hint"
-              className="field num uppercase"
+              className="field num uppercase placeholder:normal-case"
             />
             <p id="add-holding-symbol-hint" role={symbol.length > 0 && !isValidTicker ? 'alert' : undefined} className={`mt-2 text-xs leading-5 ${symbol.length > 0 && !isValidTicker ? 'text-warn' : 'text-ink-dim'}`}>
               {symbol.length > 0 && !isValidTicker

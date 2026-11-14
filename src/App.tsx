@@ -24,6 +24,8 @@ import StockDetailPanel from './components/detail/StockDetailPanel';
 import PrimaryWorkspace from './components/PrimaryWorkspace';
 import AuthModal from './components/AuthModal';
 import HoldingModal from './components/HoldingModal';
+import ConfirmDialog from './components/ui/ConfirmDialog';
+import { removeStockWarning } from './utils/portfolioState';
 
 /**
  * App shell: connects the state hooks to the header, the portfolio screen (hero, holdings list,
@@ -34,6 +36,7 @@ export default function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [editingTicker, setEditingTicker] = useState<string | null>(null);
+  const [removingTicker, setRemovingTicker] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const view = useWatchlistView();
 
@@ -98,6 +101,13 @@ export default function App() {
     saveHolding(ticker, quantity, averageCost);
     setNotice(`${ticker} added to your holdings.`);
   };
+
+  // Removing a stock also deletes its shares and average cost, so ask first when it has shares.
+  const requestRemoveStock = (ticker: string) => {
+    if (removeStockWarning(quantities?.[ticker], averageCosts?.[ticker])) setRemovingTicker(ticker);
+    else removeStock(ticker);
+  };
+  const removeWarning = removingTicker ? removeStockWarning(quantities?.[removingTicker], averageCosts?.[removingTicker]) : null;
 
   const loadSampleWatchlist = () => {
     STARTER_STOCKS.forEach(addStock);
@@ -172,7 +182,7 @@ export default function App() {
                       newsLoading={newsLoading}
                       onEditHolding={setEditingTicker}
                       canRemove={activeTickers.length > 1}
-                      onRemove={removeStock}
+                      onRemove={requestRemoveStock}
                     />
                   )}
                 </div>
@@ -240,6 +250,16 @@ export default function App() {
           setNotice(`${editingTicker} holding updated.`);
         }}
       />
+      {removingTicker && removeWarning && (
+        <ConfirmDialog
+          titleId="remove-stock-title"
+          title={`Remove ${removingTicker}?`}
+          message={removeWarning}
+          confirmLabel="Remove stock"
+          onConfirm={() => removeStock(removingTicker)}
+          onClose={() => setRemovingTicker(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
-import { lazy } from 'react';
+import { lazy, useMemo } from 'react';
 import { Activity, Layers3, LineChart, Loader2, TrendingUp } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
 import { analyzeStock } from '../../utils/technicalAnalysis';
+import { historySignature } from '../../utils/chartData';
 import { getForecastInputs } from '../../utils/forecast';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
 import type { NewsItem } from '../../types/news';
@@ -28,7 +29,15 @@ interface StockDetailPanelProps {
 
 /** The selected stock: quote header, Chart/Analysis/Forecast/Compare tabs, and its news. */
 export default function StockDetailPanel({ selectedStock, stocks, activeTab, onTabChange, stockNews, newsLoading }: StockDetailPanelProps) {
-  const analysis = analyzeStock(selectedStock.historicalData, selectedStock.hasRealHistory);
+  // Recompute indicators only when the history changes, so re-renders (typing in search, the quote
+  // refresh) hand the chart the same object and it doesn't redraw. The signature catches the
+  // refresh updating today's candle in place.
+  const { historicalData, hasRealHistory } = selectedStock;
+  const historyKey = historySignature(historicalData);
+  const analysis = useMemo(
+    () => analyzeStock(historicalData, hasRealHistory),
+    [historicalData, historyKey, hasRealHistory],
+  );
   const { cagr: forecastCagr, unavailableReason: forecastUnavailableReason } = getForecastInputs(selectedStock);
 
   return (

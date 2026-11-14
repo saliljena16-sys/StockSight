@@ -81,7 +81,7 @@ export default function PortfolioHero({
   );
 
   return (
-    <section aria-labelledby="portfolio-heading" className="pb-4 pt-3 sm:pt-5 lg:pb-7 lg:pt-8">
+    <section aria-labelledby="portfolio-heading" className={`pb-4 pt-3 sm:pt-5 lg:pt-8 ${showPrompt && !isEmpty ? 'lg:pb-6' : 'lg:pb-7'}`}>
       <h2 id="portfolio-heading" className="sr-only">Portfolio summary</h2>
 
       <div className="flex items-center justify-between gap-3">
@@ -97,20 +97,25 @@ export default function PortfolioHero({
       </div>
 
       {showPrompt ? (
-        <div className="mt-1 max-w-2xl lg:mt-2">
-          <p className="text-[28px] font-semibold leading-[1.08] tracking-[-0.04em] text-ink sm:text-5xl">
-            {isEmpty ? 'Start this portfolio.' : 'Add your first holding.'}
-          </p>
-          <p className="mt-2.5 text-sm leading-6 text-ink-muted sm:mt-4 sm:text-base sm:leading-7">
-            {isEmpty
-              ? 'Add a stock you own, or load a sample watchlist to see how StockSight works.'
-              : <>
-                  <span className="hidden sm:inline">You&apos;re watching {watchedCount} {watchedCount === 1 ? 'stock' : 'stocks'}. </span>
-                  Add the shares you own to track your value, today&apos;s change and total return.
-                  {!signedIn && <span className="hidden sm:inline"> It stays on this device unless you sign in.</span>}
-                </>}
-          </p>
-          <div className={`mt-5 flex-wrap gap-2 ${isEmpty ? 'flex' : 'hidden lg:flex'}`}>
+        // With stocks on the list, the button sits beside the text from laptop width up and the
+        // spacing is a little tighter, so the hero is no taller than the one with a value and the
+        // chart below stays on the first screen.
+        <div className={`mt-1 lg:mt-2 ${isEmpty ? '' : 'lg:flex lg:items-end lg:gap-10'}`}>
+          <div className="max-w-2xl">
+            <p className={`text-[28px] font-semibold leading-[1.08] tracking-[-0.04em] text-ink sm:text-5xl ${isEmpty ? '' : 'lg:leading-none'}`}>
+              {isEmpty ? 'Start this portfolio.' : 'Add your first holding.'}
+            </p>
+            <p className={`mt-2.5 text-sm leading-6 text-ink-muted sm:mt-4 sm:text-base sm:leading-7 ${isEmpty ? '' : 'lg:mt-3 lg:leading-6'}`}>
+              {isEmpty
+                ? 'Add a stock you own, or load a sample watchlist to see how StockSight works.'
+                : <>
+                    <span className="hidden sm:inline">You&apos;re watching {watchedCount} {watchedCount === 1 ? 'stock' : 'stocks'}. </span>
+                    Add the shares you own to track your value, today&apos;s change and total return.
+                    {!signedIn && <span className="hidden sm:inline"> It stays on this device unless you sign in.</span>}
+                  </>}
+            </p>
+          </div>
+          <div className={`flex-wrap gap-2 ${isEmpty ? 'mt-5 flex' : 'hidden lg:mb-1 lg:flex'}`}>
             {addButton('hidden lg:inline-flex')}
             {isEmpty && <button type="button" onClick={onLoadSample} className="btn btn-secondary">Load a sample watchlist</button>}
           </div>

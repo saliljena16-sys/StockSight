@@ -65,7 +65,7 @@ export default function HoldingsList({ stocks, quantities, selectedTicker, onSel
                     <span className="num block text-sm font-medium leading-5 text-ink">{stock.ticker}</span>
                     <span className="num block truncate text-xs leading-4 text-ink-dim">
                       {held ? `${formatShares(quantity)} sh` : 'Watching'}
-                      {held && <span className="hidden lg:inline"> · ${stock.currentPrice.toFixed(2)}</span>}
+                      {held && <span className="hidden lg:inline"> · {formatCurrency(stock.currentPrice)}</span>}
                     </span>
                   </span>
                 </span>
@@ -73,7 +73,7 @@ export default function HoldingsList({ stocks, quantities, selectedTicker, onSel
                 <Sparkline values={recentCloses} positive={change >= 0} className="hidden xl:block" />
 
                 <span className="block lg:w-24 lg:shrink-0 lg:text-right">
-                  <span className="num block text-sm leading-5 text-ink">{held ? formatCurrency(stock.currentPrice * quantity) : `$${stock.currentPrice.toFixed(2)}`}</span>
+                  <span className="num block text-sm leading-5 text-ink">{formatCurrency(held ? stock.currentPrice * quantity : stock.currentPrice)}</span>
                   <Delta value={change} className="text-xs leading-4 lg:justify-end">{formatSignedPercent(change)}</Delta>
                 </span>
               </button>

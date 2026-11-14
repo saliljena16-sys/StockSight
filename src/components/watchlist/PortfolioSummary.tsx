@@ -3,6 +3,7 @@ import { MoreHorizontal } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
 import { calculateSummaryRow, type Performer, type PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
+import { formatCurrency, formatShares, formatSignedCurrency, formatSignedPercent } from '../../utils/format';
 import type { Transaction } from '../../types/portfolio';
 import { HEAD_CELL_CLASS, SymbolCell, TABLE_CLASS, rowProps, toneOf } from './tableParts';
 
@@ -39,7 +40,7 @@ function PerformerTile({ label, performer }: { label: string; performer: Perform
     <Tile label={label}>
       <p className="num mt-2 text-lg font-medium text-ink">{performer?.stock.ticker ?? '—'}</p>
       <p className={`num mt-1 text-[13px] ${performer ? toneOf(performer.change) : 'text-ink-dim'}`}>
-        {performer ? `${performer.change >= 0 ? '+' : '-'}$${Math.abs(performer.change).toFixed(2)} (${performer.percent >= 0 ? '+' : ''}${performer.percent.toFixed(2)}%)` : '—'}
+        {performer ? `${formatSignedCurrency(performer.change)} (${formatSignedPercent(performer.percent)})` : '—'}
       </p>
     </Tile>
   );
@@ -77,17 +78,18 @@ export default function PortfolioSummary({
     <div className="p-4 sm:p-5">
       <div className="mb-3 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
         <Tile label="Total return">
-          <p className={`num mt-2 text-lg font-medium ${toneOf(portfolioTotalGain)}`}>{portfolioTotalGain >= 0 ? '+' : '-'}${Math.abs(portfolioTotalGain).toFixed(2)}</p>
-          <p className={`num mt-1 text-[13px] ${toneOf(portfolioTotalGain)}`}>{portfolioTotalGainPercent >= 0 ? '+' : ''}{portfolioTotalGainPercent.toFixed(2)}%</p>
+          <p className={`num mt-2 text-lg font-medium ${toneOf(portfolioTotalGain)}`}>{formatSignedCurrency(portfolioTotalGain)}</p>
+          <p className={`num mt-1 text-[13px] ${toneOf(portfolioTotalGain)}`}>{formatSignedPercent(portfolioTotalGainPercent)}</p>
         </Tile>
         <PerformerTile label="Best performer" performer={bestPerformer} />
         <PerformerTile label="Worst performer" performer={worstPerformer} />
         <label className="block rounded-control border border-line p-4 focus-within:border-accent">
-          <span className="eyebrow">Cash position</span>
-          <span className="num mt-2 flex items-center text-lg font-medium text-ink">
-            $<input aria-label="Cash position" type="number" inputMode="decimal" min="0" step="0.01" value={cashBalance} onChange={event => onCashChange(event.target.value)} className="min-w-0 flex-1 bg-transparent pl-1 text-ink outline-none" />
+          <span className="eyebrow block">Cash position</span>
+          {/* The input is 44px tall on touch screens; the tile's spacing shrinks so its height stays the same. */}
+          <span className="num mt-0.5 flex items-center text-lg font-medium text-ink lg:mt-2">
+            $<input aria-label="Cash position" type="number" inputMode="decimal" min="0" step="0.01" value={cashBalance} onChange={event => onCashChange(event.target.value)} className="h-11 min-w-0 flex-1 bg-transparent pl-1 text-ink outline-none lg:h-7" />
           </span>
-          <span className="mt-1 block text-[13px] text-ink-dim">Counts toward portfolio value</span>
+          <span className="block text-[13px] text-ink-dim lg:mt-1">Counts toward portfolio value</span>
         </label>
       </div>
 
@@ -112,14 +114,14 @@ export default function PortfolioSummary({
         <Tile label="Transaction history">
           <div className="mt-2 flex items-center justify-between gap-3">
             <p className="text-[13px] text-ink-muted">Holding edits are recorded automatically.</p>
-            <span className="num shrink-0 text-xs text-ink-dim">{transactions?.length ?? 0} records</span>
+            <span className="num shrink-0 text-xs text-ink-dim">{transactions?.length ?? 0} {transactions?.length === 1 ? 'record' : 'records'}</span>
           </div>
           {(transactions?.length ?? 0) > 0 ? (
             <div className="mt-2 divide-y divide-line">
               {transactions.slice(0, 5).map(transaction => (
                 <div key={transaction.id} className="grid grid-cols-[1fr_auto_auto] items-baseline gap-4 py-2 text-xs">
                   <span className="num font-medium text-ink">{transaction.ticker} <span className={transaction.type === 'buy' ? 'text-gain' : 'text-loss'}>{transaction.type.toUpperCase()}</span></span>
-                  <span className="num text-ink-muted">{transaction.quantity.toFixed(4).replace(/\.?0+$/, '')} @ ${transaction.price.toFixed(2)}</span>
+                  <span className="num text-ink-muted">{formatShares(transaction.quantity)} @ {formatCurrency(transaction.price)}</span>
                   <time className="text-ink-dim">{new Date(transaction.date).toLocaleDateString()}</time>
                 </div>
               ))}
@@ -152,7 +154,10 @@ export default function PortfolioSummary({
           <thead>
             <tr>
               {['Symbol / Company', 'Sector', 'Shares', 'Last Price', 'Market Value', 'Day P/L', 'Day P/L %', 'Total P/L', 'Actions'].map((header) => (
-                <th key={header} className={`${HEAD_CELL_CLASS} ${['Symbol / Company', 'Sector'].includes(header) ? '!text-left' : ''}`}>{header}</th>
+                <th key={header} className={`${HEAD_CELL_CLASS} ${['Symbol / Company', 'Sector'].includes(header) ? '!text-left' : ''}`}>
+                  {/* Phones show only logo and ticker in the first column, so its heading is shorter too. */}
+                  {header === 'Symbol / Company' ? <><span className="sm:hidden">Symbol</span><span className="max-sm:hidden">{header}</span></> : header}
+                </th>
               ))}
             </tr>
           </thead>
@@ -165,16 +170,12 @@ export default function PortfolioSummary({
                 <tr key={stock.ticker} {...rowProps(stock.ticker, selectedTicker, onSelect)}>
                   <SymbolCell ticker={stock.ticker} selected={stock.ticker === selectedTicker} onSelect={onSelect} sub={getCompanyMetadata(stock.ticker, stock.name).name} />
                   <td className="px-3 py-1 !text-left font-sans">{stock.sector}</td>
-                  <td className="px-3 py-1 text-ink">{quantity}</td>
-                  <td className="px-3 py-1 text-ink">${stock.currentPrice.toFixed(2)}</td>
-                  <td className="px-3 py-1 text-ink">${marketValue.toFixed(2)}</td>
-                  <td className={`px-3 py-1 ${toneOf(dayPnL)}`}>
-                    {dayPnL >= 0 ? '+' : '-'}${Math.abs(dayPnL).toFixed(2)}
-                  </td>
-                  <td className={`px-3 py-1 ${toneOf(dayPnLPercent)}`}>{dayPnLPercent >= 0 ? '+' : ''}{dayPnLPercent.toFixed(2)}%</td>
-                  <td className={`px-3 py-1 ${toneOf(totalPnL)}`}>
-                    {totalPnL >= 0 ? '+' : '-'}${Math.abs(totalPnL).toFixed(2)}
-                  </td>
+                  <td className="px-3 py-1 text-ink">{formatShares(quantity)}</td>
+                  <td className="px-3 py-1 text-ink">{formatCurrency(stock.currentPrice)}</td>
+                  <td className="px-3 py-1 text-ink">{formatCurrency(marketValue)}</td>
+                  <td className={`px-3 py-1 ${toneOf(dayPnL)}`}>{formatSignedCurrency(dayPnL)}</td>
+                  <td className={`px-3 py-1 ${toneOf(dayPnLPercent)}`}>{formatSignedPercent(dayPnLPercent)}</td>
+                  <td className={`px-3 py-1 ${toneOf(totalPnL)}`}>{formatSignedCurrency(totalPnL)}</td>
                   <td className="px-3 py-1">
                     <button type="button" aria-label={`Edit ${stock.ticker} holding`} onClick={(event) => { event.stopPropagation(); onEditHolding(stock.ticker); }} className="icon-btn icon-btn-plain icon-btn-sm ml-auto">
                       <MoreHorizontal className="h-4 w-4" aria-hidden="true" />

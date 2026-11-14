@@ -1,6 +1,7 @@
 import type { StockInfo } from '../../utils/mockData';
 import { getHoldingMetrics } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
+import { formatCurrency, formatShares, formatSignedCurrency, formatSignedPercent } from '../../utils/format';
 import { HEAD_CELL_CLASS, SymbolCell, TABLE_CLASS, rowProps, toneOf } from './tableParts';
 
 interface HoldingsTableProps {
@@ -47,28 +48,20 @@ export default function HoldingsTable({ stocks, quantities, averageCosts, select
                     }}
                     aria-label={isHolding ? `Edit ${stock.ticker} holding` : `Add ${stock.ticker} shares`}
                     className="btn btn-secondary btn-sm font-sans"
-                  >{isHolding ? 'Edit' : 'Add'}</button><span className="min-w-6 text-ink">{holdingMetrics.shares}</span>
+                  >{isHolding ? 'Edit' : 'Add'}</button><span className="min-w-6 text-ink">{formatShares(holdingMetrics.shares)}</span>
                 </div>
               </td>
-              <td className="px-3 py-1 text-ink">${stock.currentPrice.toFixed(2)}</td>
-              <td className="px-3 py-1">{held ? `$${holdingMetrics.avgCostPerShare.toFixed(2)}` : NONE}</td>
-              <td className="px-3 py-1">{held ? `$${holdingMetrics.totalCost.toFixed(2)}` : NONE}</td>
-              <td className="px-3 py-1 text-ink">{held ? `$${holdingMetrics.marketValue.toFixed(2)}` : NONE}</td>
-              <td className="px-3 py-1">{held ? `$${holdingMetrics.totalDivIncome.toFixed(2)}` : NONE}</td>
-              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.dayGainPct) : ''}`}>
-                {held ? `${holdingMetrics.dayGainPct >= 0 ? '+' : ''}${holdingMetrics.dayGainPct.toFixed(2)}%` : NONE}
-              </td>
-              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.dayGainDollar) : ''}`}>
-                {held ? `${holdingMetrics.dayGainDollar >= 0 ? '+' : '-'}$${Math.abs(holdingMetrics.dayGainDollar).toFixed(2)}` : NONE}
-              </td>
-              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.totalGainPct) : ''}`}>
-                {held ? `${holdingMetrics.totalGainPct >= 0 ? '+' : ''}${holdingMetrics.totalGainPct.toFixed(2)}%` : NONE}
-              </td>
-              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.totalGainDollar) : ''}`}>
-                {held ? `${holdingMetrics.totalGainDollar >= 0 ? '+' : '-'}$${Math.abs(holdingMetrics.totalGainDollar).toFixed(2)}` : NONE}
-              </td>
-              <td className="px-3 py-1">{held ? `${holdingMetrics.realizedGainPct >= 0 ? '+' : ''}${holdingMetrics.realizedGainPct.toFixed(2)}%` : NONE}</td>
-              <td className="px-3 py-1">{held ? `${holdingMetrics.realizedGainDollar >= 0 ? '+' : '-'}$${Math.abs(holdingMetrics.realizedGainDollar).toFixed(2)}` : NONE}</td>
+              <td className="px-3 py-1 text-ink">{formatCurrency(stock.currentPrice)}</td>
+              <td className="px-3 py-1">{held ? formatCurrency(holdingMetrics.avgCostPerShare) : NONE}</td>
+              <td className="px-3 py-1">{held ? formatCurrency(holdingMetrics.totalCost) : NONE}</td>
+              <td className="px-3 py-1 text-ink">{held ? formatCurrency(holdingMetrics.marketValue) : NONE}</td>
+              <td className="px-3 py-1">{held ? formatCurrency(holdingMetrics.totalDivIncome) : NONE}</td>
+              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.dayGainPct) : ''}`}>{held ? formatSignedPercent(holdingMetrics.dayGainPct) : NONE}</td>
+              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.dayGainDollar) : ''}`}>{held ? formatSignedCurrency(holdingMetrics.dayGainDollar) : NONE}</td>
+              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.totalGainPct) : ''}`}>{held ? formatSignedPercent(holdingMetrics.totalGainPct) : NONE}</td>
+              <td className={`px-3 py-1 ${held ? toneOf(holdingMetrics.totalGainDollar) : ''}`}>{held ? formatSignedCurrency(holdingMetrics.totalGainDollar) : NONE}</td>
+              <td className="px-3 py-1">{held ? formatSignedPercent(holdingMetrics.realizedGainPct) : NONE}</td>
+              <td className="px-3 py-1">{held ? formatSignedCurrency(holdingMetrics.realizedGainDollar) : NONE}</td>
             </tr>
           );
         })}

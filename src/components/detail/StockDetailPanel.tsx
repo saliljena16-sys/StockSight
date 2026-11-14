@@ -84,8 +84,10 @@ export default function StockDetailPanel({
 
   return (
     <section data-detail-panel aria-labelledby="detail-heading" className="panel flex min-w-0 flex-col p-4 sm:p-5 lg:p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+      {/* Identity, price and (below laptop width) the edit button. Under 360px the price drops to
+          its own row, so the ticker and company name are never squeezed out. */}
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-2.5 min-[360px]:max-lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <div className="mr-1 flex min-w-0 items-center gap-3">
           <CompanyMark ticker={ticker} size={40} className="rounded-control" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -106,26 +108,26 @@ export default function StockDetailPanel({
           </div>
         </div>
 
-        <div className="flex shrink-0 items-start gap-2">
-          <div className="text-right">
-            <p className="num text-[22px] font-medium leading-6 tracking-[-0.04em] text-ink sm:text-[28px] sm:leading-8">${selectedStock.currentPrice.toFixed(2)}</p>
-            <Delta value={change} className="mt-0.5 justify-end text-xs sm:text-[13px]">
-              {change >= 0 ? '+' : ''}{change.toFixed(2)} ({formatSignedPercent(changePercent)})
-            </Delta>
-          </div>
-          <button type="button" onClick={() => onEditHolding(ticker)} aria-label={editLabel} title={held ? 'Edit holding' : 'Add shares'} className="icon-btn lg:hidden">
-            {held ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-          </button>
+        <div className="max-[359px]:order-last max-[359px]:col-span-2 max-[359px]:flex max-[359px]:flex-wrap max-[359px]:items-baseline max-[359px]:gap-x-3 min-[360px]:text-right">
+          <p className="num text-[22px] font-medium leading-6 tracking-[-0.04em] text-ink sm:text-[28px] sm:leading-8">{formatCurrency(selectedStock.currentPrice)}</p>
+          <Delta value={change} className="mt-0.5 text-xs min-[360px]:justify-end sm:text-[13px]">
+            {change >= 0 ? '+' : ''}{change.toFixed(2)} ({formatSignedPercent(changePercent)})
+          </Delta>
         </div>
+        <button type="button" onClick={() => onEditHolding(ticker)} aria-label={editLabel} title={held ? 'Edit holding' : 'Add shares'} className="icon-btn lg:hidden">
+          {held ? <Pencil className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+        </button>
       </div>
 
       {/* Your position. Above the tabs on wide screens; below the chart on small ones, where the
           edit button in the header keeps it one tap away. */}
       <div className="order-last mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-line pt-3 lg:order-none lg:border-b lg:py-3">
+        {/* From laptop width the figures take the free space and wrap among themselves, so the
+            buttons stay on the right however long the numbers get. */}
         {held ? (
-          <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-[13px]">
+          <dl className="flex flex-wrap items-baseline gap-x-6 gap-y-2 text-[13px] lg:min-w-0 lg:flex-1">
             <div className="flex items-baseline gap-2"><dt className="eyebrow">Shares</dt><dd className="num text-ink">{formatShares(quantity)}</dd></div>
-            <div className="flex items-baseline gap-2"><dt className="eyebrow">Avg cost</dt><dd className="num text-ink">${position.avgCostPerShare.toFixed(2)}</dd></div>
+            <div className="flex items-baseline gap-2"><dt className="eyebrow">Avg cost</dt><dd className="num text-ink">{formatCurrency(position.avgCostPerShare)}</dd></div>
             <div className="flex items-baseline gap-2"><dt className="eyebrow">Value</dt><dd className="num text-ink">{formatCurrency(position.marketValue)}</dd></div>
             <div className="flex items-baseline gap-2">
               <dt className="eyebrow">Total P/L</dt>
@@ -133,13 +135,14 @@ export default function StockDetailPanel({
             </div>
           </dl>
         ) : (
-          <p className="text-[13px] text-ink-muted">You&apos;re watching {ticker}. Add your shares to track its value and profit or loss.</p>
+          <p className="text-[13px] leading-5 text-ink-muted lg:min-w-0 lg:flex-1">You&apos;re watching {ticker}. Add your shares to track its value and profit or loss.</p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <SignalChip recommendation={analysis.recommendation} className="sm:hidden" />
-          <button type="button" onClick={() => onEditHolding(ticker)} className="btn btn-secondary btn-sm hidden lg:inline-flex">
+          {/* On small laptops a held position's figures need the width, so the button is icon-only there. */}
+          <button type="button" onClick={() => onEditHolding(ticker)} title={held ? 'Edit holding' : 'Add shares'} className="btn btn-secondary btn-sm hidden lg:inline-flex">
             {held ? <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
-            {held ? 'Edit holding' : 'Add shares'}
+            <span className={held ? 'max-xl:sr-only' : undefined}>{held ? 'Edit holding' : 'Add shares'}</span>
           </button>
           {canRemove && (
             <button type="button" onClick={() => onRemove(ticker)} aria-label={`Remove ${ticker} from this portfolio`} title="Remove stock" className="icon-btn icon-btn-plain icon-btn-sm text-ink-dim">

@@ -27,17 +27,18 @@ interface SymbolCellProps {
 /** First column of every portfolio table: logo and ticker as a button, with an accent bar when selected. */
 export function SymbolCell({ ticker, selected, onSelect, sub, badge }: SymbolCellProps) {
   return (
-    <td className={`border-l-2 px-3 py-1 !text-left ${selected ? 'border-accent' : 'border-transparent'}`}>
+    <td className={`border-l-2 py-1 pl-3 pr-2 !text-left sm:pr-3 ${selected ? 'border-accent' : 'border-transparent'}`}>
       <button
         type="button"
         aria-pressed={selected}
         onClick={(event) => { event.stopPropagation(); onSelect(ticker); }}
-        className="flex min-h-11 min-w-[10rem] items-center gap-2.5 text-left lg:min-h-9"
+        className="flex min-h-11 items-center gap-2.5 text-left sm:min-w-[10rem] lg:min-h-9"
       >
         <CompanyMark ticker={ticker} size={24} />
         <span className="min-w-0">
           <span className="flex items-center gap-2 font-medium text-ink">{ticker}{badge}</span>
-          {sub && <span className="block max-w-[9rem] truncate font-sans text-xs text-ink-muted">{sub}</span>}
+          {/* On phones the sticky first column is just logo and ticker, leaving room for the figures. */}
+          {sub && <span className="hidden max-w-[9rem] truncate font-sans text-xs text-ink-muted sm:block">{sub}</span>}
         </span>
       </button>
     </td>

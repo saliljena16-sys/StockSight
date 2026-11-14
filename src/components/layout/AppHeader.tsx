@@ -94,7 +94,7 @@ export default function AppHeader({
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
-              className="field rounded-full pl-10 md:h-10 lg:pr-16"
+              className="field rounded-full pl-10 lg:h-10 lg:pr-16"
             />
             <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[5px] border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-dim lg:block">Ctrl K</kbd>
           </label>

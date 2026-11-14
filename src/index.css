@@ -80,24 +80,6 @@
   --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* Aliases for the variable names the pre-redesign components still use.
-   Removed at the end of the redesign once nothing references them. */
-:root {
-  --ink: var(--color-ink);
-  --text-secondary: var(--color-ink-muted);
-  --text-tertiary: var(--color-ink-dim);
-  --canvas: var(--color-canvas);
-  --surface-1: var(--color-surface);
-  --surface-2: var(--color-raised);
-  --surface-hover: var(--color-raised);
-  --border: var(--color-line);
-  --border-strong: var(--color-line-strong);
-  --accent: var(--color-accent);
-  --positive: var(--color-gain);
-  --negative: var(--color-loss);
-  --warning: var(--color-warn);
-}
-
 /* ── Base ────────────────────────────────────────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
@@ -346,12 +328,13 @@ input[type="number"] { -moz-appearance: textfield; }
     background: var(--color-accent);
   }
 
-  /* Header navigation link. The current page gets a coral dot underneath. */
+  /* Header navigation link. The current page gets a coral dot underneath. 44px tall on tablets
+     (touch), 40px from laptop widths up. */
   .nav-link {
     position: relative;
     display: inline-flex;
     align-items: center;
-    height: 2.5rem;
+    height: 2.75rem;
     padding: 0 0.75rem;
     color: var(--color-ink-muted);
     font-size: 0.875rem;
@@ -392,6 +375,7 @@ input[type="number"] { -moz-appearance: textfield; }
   .seg[aria-pressed="true"] { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink); }
 
   @media (min-width: 64rem) {
+    .nav-link { height: 2.5rem; }
     .tab { min-width: 0; min-height: 2.5rem; }
     .seg { min-width: 2.25rem; min-height: 2rem; padding: 0 0.625rem; }
   }

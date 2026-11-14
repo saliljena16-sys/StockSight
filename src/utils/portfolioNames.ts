@@ -20,6 +20,32 @@ export function suggestPortfolioName(existingNames: string[]): string {
   return `Portfolio ${index}`;
 }
 
+/** The delete confirmation: names the portfolio and what goes with it. */
+export function deletePortfolioMessage(name: string): string {
+  return `"${name}" and its stocks, shares, cash and transactions will be deleted. This can't be undone.`;
+}
+
+export type PortfolioNameCheck =
+  /** Free to use; `name` is trimmed. */
+  | { status: 'ok'; name: string }
+  /** Nothing to save: the field is blank, or a rename kept the exact current name. */
+  | { status: 'empty' | 'unchanged' }
+  /** Clashes with another portfolio; `message` says which. */
+  | { status: 'clash'; message: string };
+
+/**
+ * Checks what was typed in the create / rename dialog. A clashing name is never accepted, so
+ * creating or renaming can't overwrite another portfolio's data. Pass `currentName` when
+ * renaming: that portfolio's own name is allowed, and keeping it exactly means "no change".
+ */
+export function checkPortfolioName(input: string, existingNames: string[], currentName?: string): PortfolioNameCheck {
+  const name = input.trim();
+  if (!name) return { status: 'empty' };
+  if (currentName !== undefined && name === currentName) return { status: 'unchanged' };
+  const error = portfolioNameError(name, existingNames, currentName);
+  return error ? { status: 'clash', message: error } : { status: 'ok', name };
+}
+
 interface AskForPortfolioNameOptions {
   /** Shows a prompt and returns the answer, or null when cancelled (window.prompt in the app). */
   ask: (message: string, defaultValue: string) => string | null;

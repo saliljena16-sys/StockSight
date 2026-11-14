@@ -11,6 +11,10 @@ interface PortfolioSummaryProps {
   transactions: Transaction[];
   /** Stocks in the selected sector; the holdings table lists those with shares. */
   filteredStocks: StockInfo[];
+  /** The sector filter applies only to this tab's holdings table, so it is shown here. */
+  sectorFilter: string;
+  availableSectors: string[];
+  onSectorChange: (sector: string) => void;
   quantities: Record<string, number> | undefined;
   averageCosts: Record<string, number> | undefined;
   selectedTicker: string;
@@ -25,6 +29,9 @@ export default function PortfolioSummary({
   sectorAllocation,
   transactions,
   filteredStocks,
+  sectorFilter,
+  availableSectors,
+  onSectorChange,
   quantities,
   averageCosts,
   selectedTicker,
@@ -94,6 +101,22 @@ export default function PortfolioSummary({
       <div className="mb-5 rounded-[8px] border border-white/[.08] bg-black/10 p-4">
         <div className="mb-3 flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Transaction history</p><p className="mt-1 text-xs text-[var(--text-secondary)]">Holding edits are recorded automatically.</p></div><span className="font-mono text-xs text-[var(--text-tertiary)]">{transactions?.length ?? 0} records</span></div>
         {(transactions?.length ?? 0) > 0 ? <div className="divide-y divide-white/[.06]">{transactions.slice(0, 5).map(transaction => <div key={transaction.id} className="grid grid-cols-[1fr_auto_auto] gap-4 py-2 text-xs"><span className="font-semibold text-white">{transaction.ticker} <span className={transaction.type === 'buy' ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}>{transaction.type.toUpperCase()}</span></span><span className="font-mono text-[var(--text-secondary)]">{transaction.quantity.toFixed(4).replace(/\.?0+$/, '')} @ ${transaction.price.toFixed(2)}</span><time className="text-[var(--text-tertiary)]">{new Date(transaction.date).toLocaleDateString()}</time></div>)}</div> : <p className="py-3 text-xs text-[var(--text-tertiary)]">Edit a holding to create the first transaction.</p>}
+      </div>
+
+      <div className="mb-3 flex justify-end">
+        <label className="flex items-center gap-2 rounded-[7px] border border-white/[.09] bg-white/[.03] px-3 py-2 text-xs text-[#89918b]">
+          <span>Sector</span>
+          <select
+            value={sectorFilter}
+            onChange={(event) => onSectorChange(event.target.value)}
+            className="bg-[#101411] text-white outline-none"
+          >
+            <option value="All">All</option>
+            {availableSectors.map((sector) => (
+              <option key={sector} value={sector}>{sector}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="overflow-hidden border border-white/[.07] rounded-[7px]">

@@ -10,7 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --port 4000 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/analytics.test.ts tests/yahooProxy.test.ts tests/keyStats.test.ts tests/forecastAndErrors.test.ts tests/appUtils.test.ts tests/portfolioState.test.ts tests/portfolioNames.test.ts"
+    "test": "node --experimental-strip-types --test tests/analytics.test.ts tests/yahooProxy.test.ts tests/keyStats.test.ts tests/forecastAndErrors.test.ts tests/appUtils.test.ts tests/portfolioState.test.ts tests/portfolioNames.test.ts tests/components.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

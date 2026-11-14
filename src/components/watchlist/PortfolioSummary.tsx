@@ -1,6 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Layers3, MoreHorizontal, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
-import type { PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
+import { calculateSummaryRow, type PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
 import type { Transaction } from '../../types/portfolio';
 import CompanyMark from '../CompanyMark';
@@ -12,6 +12,7 @@ interface PortfolioSummaryProps {
   /** Stocks in the selected sector; the holdings table lists those with shares. */
   filteredStocks: StockInfo[];
   quantities: Record<string, number> | undefined;
+  averageCosts: Record<string, number> | undefined;
   selectedTicker: string;
   onSelect: (ticker: string) => void;
   onEditHolding: (ticker: string) => void;
@@ -25,6 +26,7 @@ export default function PortfolioSummary({
   transactions,
   filteredStocks,
   quantities,
+  averageCosts,
   selectedTicker,
   onSelect,
   onEditHolding,
@@ -106,12 +108,7 @@ export default function PortfolioSummary({
           <tbody>
                 {(filteredStocks ?? []).filter(stock => (quantities?.[stock.ticker] ?? 0) > 0).map((stock) => {
               const quantity = quantities?.[stock.ticker] ?? 0;
-              const marketValue = stock.currentPrice * quantity;
-              const dayChange = stock.currentPrice - stock.previousClose;
-              const dayPnL = dayChange * quantity;
-              const dayPnLPercent = stock.previousClose > 0 ? (dayChange / stock.previousClose) * 100 : 0;
-              const totalCost = stock.currentPrice * quantity;
-              const totalPnL = marketValue - totalCost;
+              const { marketValue, dayPnL, dayPnLPercent, totalPnL } = calculateSummaryRow(stock, quantity, averageCosts?.[stock.ticker]);
 
               const company = getCompanyMetadata(stock.ticker, stock.name);
 

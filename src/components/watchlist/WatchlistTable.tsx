@@ -81,6 +81,7 @@ export default function WatchlistTable({
             transactions={transactions}
             filteredStocks={filteredStocks}
             quantities={quantities}
+            averageCosts={averageCosts}
             selectedTicker={selectedTicker}
             onSelect={onSelect}
             onEditHolding={onEditHolding}

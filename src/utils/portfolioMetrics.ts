@@ -141,3 +141,17 @@ export function getHoldingMetrics(stock: StockInfo, quantity: number, averageCos
     realizedGainDollar,
   };
 }
+
+/**
+ * Figures for one row of the Summary holdings table. Total P/L is (live price − average cost) ×
+ * shares, the same figure as the Holdings tab; without an average cost it falls back to the live
+ * price (P/L 0), as everywhere else.
+ */
+export function calculateSummaryRow(stock: StockInfo, quantity: number, averageCost: number | undefined) {
+  const marketValue = stock.currentPrice * quantity;
+  const dayChange = stock.currentPrice - stock.previousClose;
+  const dayPnL = dayChange * quantity;
+  const dayPnLPercent = stock.previousClose > 0 ? (dayChange / stock.previousClose) * 100 : 0;
+  const totalPnL = getHoldingMetrics(stock, quantity, averageCost).totalGainDollar;
+  return { marketValue, dayPnL, dayPnLPercent, totalPnL };
+}

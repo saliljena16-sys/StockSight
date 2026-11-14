@@ -1,6 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Layers3, MoreHorizontal, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
-import type { PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
+import { calculateSummaryRow, type PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
 import type { Transaction } from '../../types/portfolio';
 import CompanyMark from '../CompanyMark';
@@ -11,7 +11,12 @@ interface PortfolioSummaryProps {
   transactions: Transaction[];
   /** Stocks in the selected sector; the holdings table lists those with shares. */
   filteredStocks: StockInfo[];
+  /** The sector filter applies only to this tab's holdings table, so it is shown here. */
+  sectorFilter: string;
+  availableSectors: string[];
+  onSectorChange: (sector: string) => void;
   quantities: Record<string, number> | undefined;
+  averageCosts: Record<string, number> | undefined;
   selectedTicker: string;
   onSelect: (ticker: string) => void;
   onEditHolding: (ticker: string) => void;
@@ -24,7 +29,11 @@ export default function PortfolioSummary({
   sectorAllocation,
   transactions,
   filteredStocks,
+  sectorFilter,
+  availableSectors,
+  onSectorChange,
   quantities,
+  averageCosts,
   selectedTicker,
   onSelect,
   onEditHolding,
@@ -94,6 +103,22 @@ export default function PortfolioSummary({
         {(transactions?.length ?? 0) > 0 ? <div className="divide-y divide-white/[.06]">{transactions.slice(0, 5).map(transaction => <div key={transaction.id} className="grid grid-cols-[1fr_auto_auto] gap-4 py-2 text-xs"><span className="font-semibold text-white">{transaction.ticker} <span className={transaction.type === 'buy' ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}>{transaction.type.toUpperCase()}</span></span><span className="font-mono text-[var(--text-secondary)]">{transaction.quantity.toFixed(4).replace(/\.?0+$/, '')} @ ${transaction.price.toFixed(2)}</span><time className="text-[var(--text-tertiary)]">{new Date(transaction.date).toLocaleDateString()}</time></div>)}</div> : <p className="py-3 text-xs text-[var(--text-tertiary)]">Edit a holding to create the first transaction.</p>}
       </div>
 
+      <div className="mb-3 flex justify-end">
+        <label className="flex items-center gap-2 rounded-[7px] border border-white/[.09] bg-white/[.03] px-3 py-2 text-xs text-[#89918b]">
+          <span>Sector</span>
+          <select
+            value={sectorFilter}
+            onChange={(event) => onSectorChange(event.target.value)}
+            className="bg-[#101411] text-white outline-none"
+          >
+            <option value="All">All</option>
+            {availableSectors.map((sector) => (
+              <option key={sector} value={sector}>{sector}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
       <div className="overflow-hidden border border-white/[.07] rounded-[7px]">
         <table className="data-table min-w-full border-separate border-spacing-0 text-left text-[#a2aaa4]">
           <thead className="bg-black/20">
@@ -106,12 +131,7 @@ export default function PortfolioSummary({
           <tbody>
                 {(filteredStocks ?? []).filter(stock => (quantities?.[stock.ticker] ?? 0) > 0).map((stock) => {
               const quantity = quantities?.[stock.ticker] ?? 0;
-              const marketValue = stock.currentPrice * quantity;
-              const dayChange = stock.currentPrice - stock.previousClose;
-              const dayPnL = dayChange * quantity;
-              const dayPnLPercent = stock.previousClose > 0 ? (dayChange / stock.previousClose) * 100 : 0;
-              const totalCost = stock.currentPrice * quantity;
-              const totalPnL = marketValue - totalCost;
+              const { marketValue, dayPnL, dayPnLPercent, totalPnL } = calculateSummaryRow(stock, quantity, averageCosts?.[stock.ticker]);
 
               const company = getCompanyMetadata(stock.ticker, stock.name);
 

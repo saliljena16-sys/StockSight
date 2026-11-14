@@ -1,5 +1,9 @@
 import { hasSupabaseConfig, supabase } from './supabase';
 import type { Transaction } from '../types/portfolio';
+import { createGuestPortfolioState, normalizePortfolioState } from './portfolioState';
+
+// Defaults and validation live in portfolioState (pure, testable); re-exported for existing imports.
+export { DEFAULT_PORTFOLIOS, DEFAULT_PORTFOLIO_STATE, createGuestPortfolioState } from './portfolioState';
 
 export type PortfolioMap = Record<string, string[]>;
 export type HoldingMap = Record<string, Record<string, { quantity: number; averageCost: number }>>;
@@ -9,53 +13,15 @@ export interface PortfolioState {
   holdings: HoldingMap;
   cash: Record<string, number>;
   transactions: Record<string, Transaction[]>;
+  /** Saved-shape version; absent on older saves, which are migrated on load. */
+  version?: number;
 }
-
-export const DEFAULT_PORTFOLIOS: PortfolioMap = { 'My Watchlist': ['AAPL', 'MSFT', 'NVDA'] };
-export const DEFAULT_PORTFOLIO_STATE: PortfolioState = {
-  portfolios: DEFAULT_PORTFOLIOS,
-  holdings: { 'My Watchlist': {} },
-  cash: { 'My Watchlist': 0 },
-  transactions: { 'My Watchlist': [] },
-};
 
 const DB_NAME = 'stocksight-db';
 const STORE_NAME = 'portfolios';
 const GUEST_RECORD_ID = 'guest-state-v3';
-const POPULAR_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'JPM', 'AMD', 'NFLX', 'WMT', 'JNJ'];
-
-export function createGuestPortfolioState(): PortfolioState {
-  const shuffled = [...POPULAR_TICKERS];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-  const tickers = shuffled.slice(0, 4);
-  return {
-    portfolios: { 'Popular Picks': tickers },
-    holdings: { 'Popular Picks': {} },
-    cash: { 'Popular Picks': 0 },
-    transactions: { 'Popular Picks': [] },
-  };
-}
-
 function getLocalRecordId(userId?: string | null) {
   return userId ? `user-cache-${userId}` : GUEST_RECORD_ID;
-}
-
-function normalizeState(value: unknown): PortfolioState {
-  if (!value || typeof value !== 'object') return DEFAULT_PORTFOLIO_STATE;
-  const candidate = value as Partial<PortfolioState>;
-  const portfolios = candidate.portfolios && typeof candidate.portfolios === 'object'
-    ? candidate.portfolios
-    : value as PortfolioMap;
-  if (!Object.values(portfolios).every(Array.isArray)) return DEFAULT_PORTFOLIO_STATE;
-  return {
-    portfolios,
-    holdings: candidate.holdings ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, {}])),
-    cash: candidate.cash ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, 0])),
-    transactions: candidate.transactions ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, []])),
-  };
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -75,7 +41,7 @@ async function loadLocal(userId?: string | null): Promise<PortfolioState> {
     const db = await openDatabase();
     return await new Promise(resolve => {
       const request = db.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(getLocalRecordId(userId));
-      request.onsuccess = () => resolve(request.result?.value ? normalizeState(request.result.value) : createGuestPortfolioState());
+      request.onsuccess = () => resolve(request.result?.value ? normalizePortfolioState(request.result.value) : createGuestPortfolioState());
       request.onerror = () => resolve(createGuestPortfolioState());
     });
   } catch (error) {
@@ -102,7 +68,7 @@ export async function loadPortfolioState(userId?: string | null): Promise<Portfo
   if (userId && hasSupabaseConfig && supabase) {
     try {
       const { data, error } = await supabase.from('portfolio_state').select('data').eq('id', `user-${userId}`).maybeSingle();
-      if (!error && data?.data) return normalizeState(data.data);
+      if (!error && data?.data) return normalizePortfolioState(data.data);
       if (error) console.warn('Cloud portfolio fetch failed; using local state.', error);
     } catch (error) {
       console.warn('Cloud portfolio fetch failed; using local state.', error);

@@ -11,7 +11,7 @@ interface WatchlistTableProps {
   tableTab: WatchlistTableTab;
   /** Every loaded stock in the active portfolio. */
   stocks: StockInfo[];
-  /** Stocks in the selected sector (only the Summary tab's table uses this). */
+  /** Stocks in the selected sector (only the Summary tab's table uses this, and shows the filter). */
   filteredStocks: StockInfo[];
   sectorFilter: string;
   availableSectors: string[];
@@ -28,7 +28,7 @@ interface WatchlistTableProps {
   onCashChange: (value: string) => void;
 }
 
-/** The watchlist's table view: sector picker and add button, plus the active tab's table. */
+/** The watchlist's table view: the active tab's table, with an add button on the per-stock tabs. */
 export default function WatchlistTable({
   tableTab,
   stocks,
@@ -51,19 +51,6 @@ export default function WatchlistTable({
     <div className="mb-7 overflow-hidden rounded-[10px] border border-white/[.1] bg-[var(--surface-1)]">
       {tableTab !== 'summary' && <div className="flex items-center justify-end gap-3 border-b border-white/[.07] px-4 py-3 sm:px-5">
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 rounded-[7px] border border-white/[.09] bg-white/[.03] px-3 py-2 text-xs text-[#89918b]">
-            <span>Sector</span>
-            <select
-              value={sectorFilter}
-              onChange={(event) => onSectorChange(event.target.value)}
-              className="bg-[#101411] text-white outline-none"
-            >
-              <option value="All">All</option>
-              {availableSectors.map((sector) => (
-                <option key={sector} value={sector}>{sector}</option>
-              ))}
-            </select>
-          </label>
           <button
             onClick={onAddTickers}
             className="rounded-[7px] border border-white/[.1] bg-white/[.04] px-3 py-2 text-xs font-medium text-white hover:bg-white/[.08]"
@@ -80,7 +67,11 @@ export default function WatchlistTable({
             sectorAllocation={sectorAllocation}
             transactions={transactions}
             filteredStocks={filteredStocks}
+            sectorFilter={sectorFilter}
+            availableSectors={availableSectors}
+            onSectorChange={onSectorChange}
             quantities={quantities}
+            averageCosts={averageCosts}
             selectedTicker={selectedTicker}
             onSelect={onSelect}
             onEditHolding={onEditHolding}

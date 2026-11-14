@@ -1,4 +1,5 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { askForPortfolioName, suggestPortfolioName } from '../../utils/portfolioNames';
 
 interface PortfolioBarProps {
   portfolioNames: string[];
@@ -6,8 +7,9 @@ interface PortfolioBarProps {
   onSelectPortfolio: (name: string) => void;
   holdingsCount: number;
   totalPortfolioValue: number;
-  onCreate: (name: string) => void;
-  onRename: (from: string, to: string) => void;
+  /** Returns false if the name was rejected (it never is after the prompt's own check). */
+  onCreate: (name: string) => boolean;
+  onRename: (from: string, to: string) => boolean;
   onDelete: (name: string) => void;
 }
 
@@ -22,20 +24,27 @@ export default function PortfolioBar({
   onRename,
   onDelete,
 }: PortfolioBarProps) {
+  // Names that clash with another portfolio are refused with an explanation and the prompt is
+  // shown again, so creating or renaming can never overwrite another portfolio's data.
   const handleCreatePortfolio = () => {
-    const nextName = window.prompt('Create a portfolio name', `Portfolio ${portfolioNames.length + 1}`);
-    if (!nextName || !nextName.trim()) return;
-    onCreate(nextName.trim());
+    const name = askForPortfolioName({
+      ask: (message, defaultValue) => window.prompt(message, defaultValue),
+      message: 'Create a portfolio name',
+      defaultValue: suggestPortfolioName(portfolioNames),
+      existingNames: portfolioNames,
+    });
+    if (name) onCreate(name);
   };
 
   const handleRenamePortfolio = () => {
-    const currentName = activePortfolio;
-    const nextName = window.prompt('Rename portfolio', currentName);
-    if (!nextName || !nextName.trim()) return;
-
-    const cleaned = nextName.trim();
-    if (cleaned === currentName) return;
-    onRename(currentName, cleaned);
+    const name = askForPortfolioName({
+      ask: (message, defaultValue) => window.prompt(message, defaultValue),
+      message: 'Rename portfolio',
+      defaultValue: activePortfolio,
+      existingNames: portfolioNames,
+      currentName: activePortfolio,
+    });
+    if (name) onRename(activePortfolio, name);
   };
 
   const handleDeletePortfolio = () => {

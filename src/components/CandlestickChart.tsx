@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, LineSeries, IChartApi, Time } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, IChartApi, ISeriesApi } from 'lightweight-charts';
 import { StockDataPoint } from '../utils/mockData';
 import { AnalysisResult } from '../utils/technicalAnalysis';
+import { toCandleData, toLineData } from '../utils/chartData';
 import HistoryUnavailable from './HistoryUnavailable';
+
+interface ChartSeries {
+  candles: ISeriesApi<'Candlestick'>;
+  sma50: ISeriesApi<'Line'>;
+  sma200: ISeriesApi<'Line'>;
+}
 
 interface CandlestickChartProps {
   data: StockDataPoint[];
+  /** Should be memoised by the caller: a new object updates the series (it never rebuilds the chart). */
   analysis: AnalysisResult;
   ticker: string;
   /** Shown in the empty state when no daily candles could be loaded. */
@@ -30,7 +38,11 @@ function getRangeStart(range: ChartRange, latestDate: Date): Date | null {
 export default function CandlestickChart({ data, analysis, ticker, unavailableReason }: CandlestickChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ChartSeries | null>(null);
+  // The ticker|range the chart was last fitted to; refreshes of the same view keep the user's zoom.
+  const fittedViewRef = useRef<string | null>(null);
   const [range, setRange] = useState<ChartRange>('1Y');
+  const hasData = data.length > 0;
 
   const visiblePoints = useMemo(() => {
     const indexed = data.map((point, index) => ({ point, index }));
@@ -45,15 +57,14 @@ export default function CandlestickChart({ data, analysis, ticker, unavailableRe
       : indexed;
   }, [data, range]);
 
+  // Create the chart once while there is data to show. Re-renders (typing in search, the 60-second
+  // quote refresh) never rebuild it; the effect below only feeds new data into its series.
   useEffect(() => {
-    if (!chartContainerRef.current) return;
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
+    const container = chartContainerRef.current;
+    if (!container) return;
 
-    const getChartHeight = () => Math.min(540, Math.max(360, chartContainerRef.current!.clientWidth * 0.5));
-    const chart = createChart(chartContainerRef.current, {
+    const getChartHeight = () => Math.min(540, Math.max(360, container.clientWidth * 0.5));
+    const chart = createChart(container, {
       layout: {
         background: { color: '#0e171a' },
         textColor: '#7f8981',
@@ -69,70 +80,63 @@ export default function CandlestickChart({ data, analysis, ticker, unavailableRe
       },
       rightPriceScale: { borderColor: '#242b25' },
       timeScale: { borderColor: '#242b25', timeVisible: false },
-      width: chartContainerRef.current.clientWidth,
+      width: container.clientWidth,
       height: getChartHeight(),
     });
 
     chartRef.current = chart;
-
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#54d99a',
-      downColor: '#f07878',
-      borderDownColor: '#f07878',
-      borderUpColor: '#54d99a',
-      wickDownColor: '#f07878',
-      wickUpColor: '#54d99a',
-    });
-
-    candleSeries.setData(
-      visiblePoints.map(({ point }) => ({
-        time: point.date as Time,
-        open: point.open,
-        high: point.high,
-        low: point.low,
-        close: point.close,
-      }))
-    );
-
-    const sma50Series = chart.addSeries(LineSeries, {
-      color: '#e4b75c',
-      lineWidth: 2,
-      priceLineVisible: false,
-    });
-    sma50Series.setData(
-      visiblePoints
-        .map(({ point, index }) => ({ time: point.date as Time, value: analysis.sma50[index] }))
-        .filter(d => !isNaN(d.value))
-    );
-
-    const sma200Series = chart.addSeries(LineSeries, {
-      color: '#9b8ce8',
-      lineWidth: 2,
-      priceLineVisible: false,
-    });
-    sma200Series.setData(
-      visiblePoints
-        .map(({ point, index }) => ({ time: point.date as Time, value: analysis.sma200[index] }))
-        .filter(d => !isNaN(d.value))
-    );
-
-    chart.timeScale().fitContent();
+    fittedViewRef.current = null;
+    seriesRef.current = {
+      candles: chart.addSeries(CandlestickSeries, {
+        upColor: '#54d99a',
+        downColor: '#f07878',
+        borderDownColor: '#f07878',
+        borderUpColor: '#54d99a',
+        wickDownColor: '#f07878',
+        wickUpColor: '#54d99a',
+      }),
+      sma50: chart.addSeries(LineSeries, {
+        color: '#e4b75c',
+        lineWidth: 2,
+        priceLineVisible: false,
+      }),
+      sma200: chart.addSeries(LineSeries, {
+        color: '#9b8ce8',
+        lineWidth: 2,
+        priceLineVisible: false,
+      }),
+    };
 
     const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth, height: getChartHeight() });
-      }
+      chart.applyOptions({ width: container.clientWidth, height: getChartHeight() });
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-      }
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
     };
-  }, [visiblePoints, analysis, ticker]);
+  }, [hasData]);
+
+  // Feed the visible candles and moving averages into the existing series. This runs only when the
+  // data, indicators, stock or range change, and re-fits only for a new stock or range.
+  useEffect(() => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    series.candles.setData(toCandleData(visiblePoints));
+    series.sma50.setData(toLineData(visiblePoints, analysis.sma50));
+    series.sma200.setData(toLineData(visiblePoints, analysis.sma200));
+
+    const view = `${ticker}|${range}`;
+    if (fittedViewRef.current !== view) {
+      chart.timeScale().fitContent();
+      fittedViewRef.current = view;
+    }
+  }, [visiblePoints, analysis, ticker, range, hasData]);
 
   if (data.length === 0) {
     return (

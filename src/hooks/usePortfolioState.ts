@@ -2,24 +2,22 @@ import { useEffect, useState } from 'react';
 import { STARTER_STOCKS } from '../utils/mockData';
 import { DEFAULT_PORTFOLIOS, type PortfolioState } from '../utils/portfolioDb';
 import {
-  addPortfolio,
   addTicker,
   createHoldingTransaction,
-  incrementQuantity,
-  moveEntry,
+  createPortfolioIn,
   omitKey,
   omitTicker,
   prependTransaction,
   removeTicker,
-  renamePortfolioTickers,
+  renamePortfolioIn,
   sanitizeQuantity,
   setAverageCost,
   setCash,
+  listTickerIfHeld,
+  pruneQuantities,
   setQuantity,
-  setTickerListed,
   splitHoldings,
-  syncQuantitiesWithPortfolios,
-  withEntry,
+  type PortfolioMaps,
 } from '../utils/portfolioState';
 import type {
   PortfolioAverageCosts,
@@ -27,7 +25,6 @@ import type {
   PortfolioQuantities,
   PortfolioTickers,
   PortfolioTransactions,
-  Transaction,
 } from '../types/portfolio';
 
 /**
@@ -58,19 +55,18 @@ export function usePortfolioState() {
     setSelectedTicker(saved.portfolios[firstPortfolio]?.[0] ?? STARTER_STOCKS[0]);
   };
 
-  /** Lists a ticker in the active portfolio, adds one share, and selects it. */
+  /** Puts a ticker on the active portfolio's watchlist (with no shares) and selects it. */
   const addStock = (ticker: string) => {
     const upper = ticker.toUpperCase();
     setPortfolios(prev => addTicker(prev, activePortfolio, upper));
-    setPortfolioQuantities(prev => incrementQuantity(prev, activePortfolio, upper));
     setSelectedTicker(upper);
   };
 
-  /** Sets a share count in the active portfolio (zero unlists the ticker) and selects it. */
+  /** Sets a share count in the active portfolio and selects the ticker. Zero shares keeps it on the watchlist. */
   const updateStockQuantity = (ticker: string, nextQuantity: number) => {
     const upper = ticker.toUpperCase();
     const safeQuantity = sanitizeQuantity(nextQuantity);
-    setPortfolios(prev => setTickerListed(prev, activePortfolio, upper, safeQuantity));
+    setPortfolios(prev => listTickerIfHeld(prev, activePortfolio, upper, safeQuantity));
     setPortfolioQuantities(prev => setQuantity(prev, activePortfolio, upper, safeQuantity));
     setSelectedTicker(upper);
   };
@@ -104,24 +100,44 @@ export function usePortfolioState() {
     setPortfolioCash(prev => setCash(prev, activePortfolio, value));
   };
 
-  /** Creates (or, if the name exists, resets the holdings of) a portfolio and makes it active. */
-  const createPortfolio = (name: string) => {
-    setPortfolios(prev => addPortfolio(prev, name));
-    setPortfolioQuantities(prev => withEntry(prev, name, {}));
-    setPortfolioAverageCosts(prev => withEntry(prev, name, {}));
-    setPortfolioCash(prev => withEntry(prev, name, 0));
-    setPortfolioTransactions(prev => withEntry<Transaction[]>(prev, name, []));
-    setActivePortfolio(name);
+  const currentMaps = (): PortfolioMaps => ({
+    portfolios,
+    quantities: portfolioQuantities,
+    averageCosts: portfolioAverageCosts,
+    cash: portfolioCash,
+    transactions: portfolioTransactions,
+  });
+
+  const applyMaps = (next: PortfolioMaps) => {
+    setPortfolios(next.portfolios);
+    setPortfolioQuantities(next.quantities);
+    setPortfolioAverageCosts(next.averageCosts);
+    setPortfolioCash(next.cash);
+    setPortfolioTransactions(next.transactions);
   };
 
-  /** Renames a portfolio and makes the new name active. */
-  const renamePortfolio = (from: string, to: string) => {
-    setPortfolios(prev => renamePortfolioTickers(prev, from, to));
-    setPortfolioQuantities(prev => moveEntry(prev, from, to, {}));
-    setPortfolioAverageCosts(prev => moveEntry(prev, from, to, {}));
-    setPortfolioCash(prev => moveEntry(prev, from, to, 0));
-    setPortfolioTransactions(prev => moveEntry<Transaction[]>(prev, from, to, []));
+  /**
+   * Creates an empty portfolio and makes it active. Returns false, changing nothing, when the
+   * name clashes with an existing portfolio.
+   */
+  const createPortfolio = (name: string): boolean => {
+    const next = createPortfolioIn(currentMaps(), name);
+    if (!next) return false;
+    applyMaps(next);
+    setActivePortfolio(name);
+    return true;
+  };
+
+  /**
+   * Renames a portfolio and makes the new name active. Returns false, changing nothing, when the
+   * new name clashes with another portfolio.
+   */
+  const renamePortfolio = (from: string, to: string): boolean => {
+    const next = renamePortfolioIn(currentMaps(), from, to);
+    if (!next) return false;
+    applyMaps(next);
     setActivePortfolio(to);
+    return true;
   };
 
   /** Deletes a portfolio and activates the first remaining one. */
@@ -144,9 +160,9 @@ export function usePortfolioState() {
     }
   }, [activePortfolio, portfolios, selectedTicker]);
 
-  // Keep share counts in step with which tickers are listed.
+  // Drop share counts for tickers that left the watchlist. Listed stocks without an entry hold zero.
   useEffect(() => {
-    setPortfolioQuantities(prev => syncQuantitiesWithPortfolios(prev, portfolios));
+    setPortfolioQuantities(prev => pruneQuantities(prev, portfolios));
   }, [portfolios]);
 
   return {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formatCompactNumber, formatPrice } from '../src/utils/format.ts';
 import { annualizedVolatility30d, closeToCloseReturn, dayChangePercent, returnToCurrentPrice, yearToDateReturn } from '../src/utils/marketMetrics.ts';
-import { calculatePortfolioSummary, calculateSectorAllocation, getHoldingMetrics } from '../src/utils/portfolioMetrics.ts';
+import { calculatePortfolioSummary, calculateSectorAllocation, calculateSummaryRow, getHoldingMetrics } from '../src/utils/portfolioMetrics.ts';
 import { getForecastInputs } from '../src/utils/forecast.ts';
 import { isSearchShortcut, resolveSymbolSearch } from '../src/utils/symbolSearch.ts';
 import { filterStocksBySector, getAvailableSectors, shouldResetSectorFilter } from '../src/utils/sectorFilter.ts';
@@ -168,4 +168,21 @@ test('auth helpers', () => {
   assert.equal(describeAuthError('Email not confirmed'), 'Verify your email using the confirmation link before signing in.');
   assert.equal(describeAuthError('Invalid login credentials'), 'Invalid login credentials');
   assert.equal(authRedirectUrl('https://stocksight.salil.best'), 'https://stocksight.salil.best/');
+});
+
+test('Summary row Total P/L uses the average cost and the live price', () => {
+  const s = stock('AAA', { currentPrice: 110, previousClose: 100 });
+  const row = calculateSummaryRow(s as never, 2, 90);
+  assert.equal(row.marketValue, 220);
+  assert.equal(row.totalPnL, (110 - 90) * 2);
+  assert.equal(row.dayPnL, 20);
+  assert.ok(Math.abs(row.dayPnLPercent - 10) < 1e-9);
+  assert.equal(calculateSummaryRow(s as never, 3, 130).totalPnL, -60, 'a loss is negative');
+  assert.equal(calculateSummaryRow(s as never, 2, undefined).totalPnL, 0, 'no cost entered: P/L 0');
+  // Same figure as the Holdings tab, and the rows add up to the portfolio's total gain.
+  assert.equal(row.totalPnL, getHoldingMetrics(s as never, 2, 90).totalGainDollar);
+  const t = stock('BBB', { currentPrice: 50, previousClose: 55 });
+  const summary = calculatePortfolioSummary([s, t] as never, { AAA: 2, BBB: 4 }, { AAA: 90, BBB: 60 }, 0);
+  const rows = calculateSummaryRow(s as never, 2, 90).totalPnL + calculateSummaryRow(t as never, 4, 60).totalPnL;
+  assert.equal(rows, summary.totalGain);
 });

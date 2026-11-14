@@ -23,7 +23,7 @@ export default function HistoryUnavailable({
         <LineChart className="h-4 w-4 text-ink-dim" aria-hidden="true" />
       </span>
       <p className="text-sm font-semibold text-ink">{title}</p>
-      <p className="max-w-md text-[13px] leading-6 text-ink-muted">{message}</p>
+      <p className="max-w-md text-balance text-[13px] leading-6 text-ink-muted">{message}</p>
       {reason && (
         <p className="num max-w-md text-[11px] leading-4 text-ink-dim">{reason}</p>
       )}

@@ -65,7 +65,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           <AlertTriangle className="h-4 w-4 text-warn" aria-hidden="true" />
         </span>
         <p className={`font-semibold text-ink ${isPage ? 'text-xl tracking-[-0.02em]' : 'text-sm'}`}>{title}</p>
-        <p className="max-w-md text-[13px] leading-6 text-ink-muted">{message}</p>
+        <p className="max-w-md text-balance text-[13px] leading-6 text-ink-muted">{message}</p>
         <div className="mt-2 flex flex-wrap justify-center gap-2">
           <button
             type="button"

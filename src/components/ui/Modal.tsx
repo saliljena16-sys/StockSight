@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -21,10 +21,11 @@ export default function Modal({ titleId, title, description, onClose, children }
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  // Whatever had focus when the dialog opened. Read on the first render: by the time an effect
+  // runs, an autoFocus field inside the dialog has already taken focus.
+  const [opener] = useState(() => (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null));
 
   useEffect(() => {
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
@@ -49,9 +50,9 @@ export default function Modal({ titleId, title, description, onClose, children }
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      opener?.focus();
+      if (opener?.isConnected) opener.focus();
     };
-  }, []);
+  }, [opener]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">

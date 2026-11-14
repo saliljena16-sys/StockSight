@@ -66,6 +66,12 @@
   /* Second chart series colour (200-day average, comparison lines) */
   --color-violet: #a59cf5;
 
+  /* Dimmed backdrop behind dialogs */
+  --color-scrim: rgb(0 0 0 / 0.72);
+
+  /* Elevation for things that float above the page (menus, dialogs, toasts) */
+  --shadow-pop: 0 24px 64px rgb(0 0 0 / 0.6);
+
   /* Shape */
   --radius-control: 0.625rem;
   --radius-panel: 1rem;
@@ -192,6 +198,17 @@ input[type="number"] { -moz-appearance: textfield; }
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--color-ink-dim);
+  }
+
+  /* The hero figure (portfolio value). Sized by the hero token, but shrinks to fit narrow
+     screens: --chars is the number of characters, set inline by the component. */
+  .hero-value {
+    font-family: var(--font-mono);
+    font-size: min(var(--text-hero), calc((100vw - 2.5rem) / (var(--chars, 10) * 0.56)));
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    letter-spacing: -0.055em;
+    line-height: 1;
   }
 
   /* Prices, share counts, percentages. */
@@ -414,7 +431,8 @@ input[type="number"] { -moz-appearance: textfield; }
   background: var(--color-surface);
 }
 .data-table thead th:first-child { z-index: 3; }
-.data-table tbody tr:hover td:first-child { background: var(--color-raised); }
+.data-table tbody tr:hover td:first-child,
+.data-table tbody tr[data-selected="true"] td:first-child { background: var(--color-raised); }
 
 /* ── Page backdrop ───────────────────────────────────────────────────────────────────────────
    Contour lines and a faint scarlet glow behind the header and hero only. It fades out before

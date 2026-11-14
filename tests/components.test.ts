@@ -45,12 +45,13 @@ function tableProps(tableTab: string) {
   const summary = calculatePortfolioSummary(stocks as never, quantities, averageCosts, 0);
   return {
     tableTab,
+    onSelectTab: noop,
     stocks,
     filteredStocks: stocks,
     sectorFilter: 'All',
     availableSectors: ['Technology', 'Energy'],
     onSectorChange: noop,
-    onAddTickers: noop,
+    onAddHolding: noop,
     summary,
     sectorAllocation: calculateSectorAllocation(summary.holdingStocks, quantities),
     transactions: [],
@@ -71,7 +72,7 @@ test('the sector filter appears only on the Summary tab, the one it filters', as
   for (const tab of ['holdings', 'keyStats', 'performance']) {
     const html = await render('/src/components/watchlist/WatchlistTable.tsx', tableProps(tab));
     assert.ok(!html.includes('<select'), `${tab}: no sector filter`);
-    assert.ok(html.includes('+ Add tickers'), `${tab}: add button still shown`);
+    assert.ok(html.includes('Add holding'), `${tab}: add button still shown`);
   }
 });
 

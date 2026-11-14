@@ -1,9 +1,10 @@
-import { ArrowDownRight, ArrowUpRight, Layers3, MoreHorizontal, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { MoreHorizontal } from 'lucide-react';
 import type { StockInfo } from '../../utils/mockData';
-import { calculateSummaryRow, type PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
+import { calculateSummaryRow, type Performer, type PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
 import type { Transaction } from '../../types/portfolio';
-import CompanyMark from '../CompanyMark';
+import { HEAD_CELL_CLASS, SymbolCell, TABLE_CLASS, rowProps, toneOf } from './tableParts';
 
 interface PortfolioSummaryProps {
   summary: PortfolioSummaryData;
@@ -23,7 +24,28 @@ interface PortfolioSummaryProps {
   onCashChange: (value: string) => void;
 }
 
-/** Summary tab: value and P/L cards, cash, sector allocation, recent transactions, holdings table. */
+// Sector colours are neutral series colours, deliberately not the gain/loss colours.
+const SECTOR_COLORS = ['bg-ink', 'bg-violet', 'bg-warn', 'bg-accent', 'bg-ink-dim'];
+
+const Tile = ({ label, children }: { label: string; children: ReactNode }) => (
+  <div className="rounded-control border border-line p-4">
+    <p className="eyebrow">{label}</p>
+    {children}
+  </div>
+);
+
+function PerformerTile({ label, performer }: { label: string; performer: Performer | null }) {
+  return (
+    <Tile label={label}>
+      <p className="num mt-2 text-lg font-medium text-ink">{performer?.stock.ticker ?? '—'}</p>
+      <p className={`num mt-1 text-[13px] ${performer ? toneOf(performer.change) : 'text-ink-dim'}`}>
+        {performer ? `${performer.change >= 0 ? '+' : '-'}$${Math.abs(performer.change).toFixed(2)} (${performer.percent >= 0 ? '+' : ''}${performer.percent.toFixed(2)}%)` : '—'}
+      </p>
+    </Tile>
+  );
+}
+
+/** Summary tab: return, movers, cash, sector allocation, recent transactions, and the holdings table. */
 export default function PortfolioSummary({
   summary,
   sectorAllocation,
@@ -42,74 +64,80 @@ export default function PortfolioSummary({
   const {
     portfolioValue,
     cashBalance,
-    totalPortfolioValue,
     totalGain: portfolioTotalGain,
     totalGainPercent: portfolioTotalGainPercent,
     holdingStocks,
-    dayChange: portfolioDayChange,
-    dayChangePercent: portfolioDayChangePercent,
     bestPerformer,
     worstPerformer,
     sectorSummary,
   } = summary;
+  const heldInSector = (filteredStocks ?? []).filter(stock => (quantities?.[stock.ticker] ?? 0) > 0);
 
   return (
-    <div className="p-4">
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-        <div className="relative rounded-[8px] border border-white/[.1] bg-[var(--surface-2)] p-5">
-          <WalletCards className="absolute right-4 top-4 h-5 w-5 text-[#7f9186]" />
-          <div className="pr-8 text-xs uppercase tracking-[.12em] text-[var(--text-secondary)]">Portfolio value</div>
-          <div className="mt-2 font-mono text-[28px] font-medium tracking-[-.04em] text-white">${totalPortfolioValue.toFixed(2)}</div>
-          <div className={`mt-1 font-mono text-[13px] ${portfolioDayChange >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-            {portfolioDayChange >= 0 ? '+' : '-'}${Math.abs(portfolioDayChange).toFixed(2)} ({portfolioDayChangePercent >= 0 ? '+' : ''}{portfolioDayChangePercent.toFixed(2)}%)
+    <div className="p-4 sm:p-5">
+      <div className="mb-3 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4">
+        <Tile label="Total return">
+          <p className={`num mt-2 text-lg font-medium ${toneOf(portfolioTotalGain)}`}>{portfolioTotalGain >= 0 ? '+' : '-'}${Math.abs(portfolioTotalGain).toFixed(2)}</p>
+          <p className={`num mt-1 text-[13px] ${toneOf(portfolioTotalGain)}`}>{portfolioTotalGainPercent >= 0 ? '+' : ''}{portfolioTotalGainPercent.toFixed(2)}%</p>
+        </Tile>
+        <PerformerTile label="Best performer" performer={bestPerformer} />
+        <PerformerTile label="Worst performer" performer={worstPerformer} />
+        <label className="block rounded-control border border-line p-4 focus-within:border-accent">
+          <span className="eyebrow">Cash position</span>
+          <span className="num mt-2 flex items-center text-lg font-medium text-ink">
+            $<input aria-label="Cash position" type="number" inputMode="decimal" min="0" step="0.01" value={cashBalance} onChange={event => onCashChange(event.target.value)} className="min-w-0 flex-1 bg-transparent pl-1 text-ink outline-none" />
+          </span>
+          <span className="mt-1 block text-[13px] text-ink-dim">Counts toward portfolio value</span>
+        </label>
+      </div>
+
+      <div className="mb-5 grid gap-3 lg:grid-cols-2">
+        <Tile label="Sector allocation by market value">
+          <p className="mt-2 text-[13px] text-ink-muted"><span className="num text-ink">{holdingStocks.length}</span> {holdingStocks.length === 1 ? 'holding' : 'holdings'} · {sectorSummary}</p>
+          <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-raised">
+            {sectorAllocation.map(([sector, value], index) => (
+              <span key={sector} title={`${sector}: ${portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(1) : 0}%`} className={SECTOR_COLORS[index % SECTOR_COLORS.length]} style={{ width: `${portfolioValue > 0 ? (value / portfolioValue) * 100 : 0}%` }} />
+            ))}
           </div>
-        </div>
-        <div className="relative rounded-[8px] border border-white/[.1] bg-[var(--surface-2)] p-5">
-          {portfolioDayChange >= 0 ? <TrendingUp className="absolute right-4 top-4 h-5 w-5 text-[var(--positive)]" /> : <TrendingDown className="absolute right-4 top-4 h-5 w-5 text-[var(--negative)]" />}
-          <div className="pr-8 text-xs uppercase tracking-[.12em] text-[var(--text-secondary)]">Day P/L</div>
-          <div className={`mt-2 font-mono text-[28px] font-medium tracking-[-.04em] ${portfolioDayChange >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
-            {portfolioDayChange >= 0 ? '+' : '-'}${Math.abs(portfolioDayChange).toFixed(2)}
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5">
+            {sectorAllocation.map(([sector, value], index) => (
+              <span key={sector} className="flex items-center gap-1.5 text-xs text-ink-muted">
+                <span className={`h-2 w-2 rounded-full ${SECTOR_COLORS[index % SECTOR_COLORS.length]}`} aria-hidden="true" />
+                {sector} <span className="num">{portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(0) : 0}%</span>
+              </span>
+            ))}
           </div>
-          <div className={`mt-1 font-mono text-[13px] ${portfolioDayChangePercent >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{portfolioDayChangePercent >= 0 ? '+' : ''}{portfolioDayChangePercent.toFixed(2)}%</div>
-        </div>
-        <div className="relative rounded-[8px] border border-white/[.1] bg-[var(--surface-2)] p-5">
-          <Layers3 className="absolute right-4 top-4 h-5 w-5 text-[#7f9186]" />
-          <div className="pr-8 text-xs uppercase tracking-[.12em] text-[var(--text-secondary)]">Holdings</div>
-          <div className="mt-2 font-mono text-[28px] font-medium text-white">{holdingStocks.length}</div>
-          <div className="mt-1 text-[13px] text-[var(--text-secondary)]">{sectorSummary}</div>
-        </div>
-        <div className="relative rounded-[8px] border border-white/[.1] bg-[var(--surface-2)] p-5">
-          <ArrowUpRight className="absolute right-4 top-4 h-5 w-5 text-[var(--positive)]" />
-          <div className="pr-8 text-xs uppercase tracking-[.12em] text-[var(--text-secondary)]">Best performer</div>
-          <div className="mt-2 text-xl font-semibold text-white">{bestPerformer?.stock.ticker ?? '—'}</div>
-          <div className="mt-1 font-mono text-[13px] text-[var(--positive)]">{bestPerformer ? `${bestPerformer.change >= 0 ? '+' : '-'}$${Math.abs(bestPerformer.change).toFixed(2)} (${bestPerformer.percent >= 0 ? '+' : ''}${bestPerformer.percent.toFixed(2)}%)` : '—'}</div>
-        </div>
-        <div className="relative rounded-[8px] border border-white/[.1] bg-[var(--surface-2)] p-5">
-          <ArrowDownRight className="absolute right-4 top-4 h-5 w-5 text-[var(--negative)]" />
-          <div className="pr-8 text-xs uppercase tracking-[.12em] text-[var(--text-secondary)]">Worst performer</div>
-          <div className="mt-2 text-xl font-semibold text-white">{worstPerformer?.stock.ticker ?? '—'}</div>
-          <div className="mt-1 font-mono text-[13px] text-[var(--negative)]">{worstPerformer ? `${worstPerformer.change >= 0 ? '+' : '-'}$${Math.abs(worstPerformer.change).toFixed(2)} (${worstPerformer.percent >= 0 ? '+' : ''}${worstPerformer.percent.toFixed(2)}%)` : '—'}</div>
-        </div>
+        </Tile>
+
+        <Tile label="Transaction history">
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <p className="text-[13px] text-ink-muted">Holding edits are recorded automatically.</p>
+            <span className="num shrink-0 text-xs text-ink-dim">{transactions?.length ?? 0} records</span>
+          </div>
+          {(transactions?.length ?? 0) > 0 ? (
+            <div className="mt-2 divide-y divide-line">
+              {transactions.slice(0, 5).map(transaction => (
+                <div key={transaction.id} className="grid grid-cols-[1fr_auto_auto] items-baseline gap-4 py-2 text-xs">
+                  <span className="num font-medium text-ink">{transaction.ticker} <span className={transaction.type === 'buy' ? 'text-gain' : 'text-loss'}>{transaction.type.toUpperCase()}</span></span>
+                  <span className="num text-ink-muted">{transaction.quantity.toFixed(4).replace(/\.?0+$/, '')} @ ${transaction.price.toFixed(2)}</span>
+                  <time className="text-ink-dim">{new Date(transaction.date).toLocaleDateString()}</time>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-ink-dim">Edit a holding to create the first transaction.</p>
+          )}
+        </Tile>
       </div>
 
-      <div className="mb-5 grid gap-3 lg:grid-cols-[1fr_1fr_2fr]">
-        <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Total return</p><p className={`mt-2 font-mono text-lg ${portfolioTotalGain >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{portfolioTotalGain >= 0 ? '+' : '-'}${Math.abs(portfolioTotalGain).toFixed(2)} ({portfolioTotalGainPercent >= 0 ? '+' : ''}{portfolioTotalGainPercent.toFixed(2)}%)</p></div>
-        <label className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><span className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Cash position</span><span className="mt-2 flex items-center font-mono text-lg text-white">$<input aria-label="Cash position" type="number" min="0" step="0.01" value={cashBalance} onChange={event => onCashChange(event.target.value)} className="min-w-0 flex-1 bg-transparent pl-1 text-white outline-none" /></span></label>
-        <div className="rounded-[8px] border border-white/[.08] bg-black/10 p-4"><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Sector allocation by market value</p><div className="mt-3 flex h-2 overflow-hidden rounded-full bg-white/[.05]">{sectorAllocation.map(([sector, value], index) => <span key={sector} title={`${sector}: ${portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(1) : 0}%`} style={{ width: `${portfolioValue > 0 ? (value / portfolioValue) * 100 : 0}%`, backgroundColor: ['#b7f34a', '#9b8ce8', '#e4b75c', '#54d99a', '#f07878'][index % 5] }} />)}</div><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">{sectorAllocation.map(([sector, value]) => <span key={sector} className="text-[11px] text-[var(--text-secondary)]">{sector} {portfolioValue > 0 ? ((value / portfolioValue) * 100).toFixed(0) : 0}%</span>)}</div></div>
-      </div>
-
-      <div className="mb-5 rounded-[8px] border border-white/[.08] bg-black/10 p-4">
-        <div className="mb-3 flex items-center justify-between"><div><p className="text-[10px] uppercase tracking-[.12em] text-[var(--text-tertiary)]">Transaction history</p><p className="mt-1 text-xs text-[var(--text-secondary)]">Holding edits are recorded automatically.</p></div><span className="font-mono text-xs text-[var(--text-tertiary)]">{transactions?.length ?? 0} records</span></div>
-        {(transactions?.length ?? 0) > 0 ? <div className="divide-y divide-white/[.06]">{transactions.slice(0, 5).map(transaction => <div key={transaction.id} className="grid grid-cols-[1fr_auto_auto] gap-4 py-2 text-xs"><span className="font-semibold text-white">{transaction.ticker} <span className={transaction.type === 'buy' ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}>{transaction.type.toUpperCase()}</span></span><span className="font-mono text-[var(--text-secondary)]">{transaction.quantity.toFixed(4).replace(/\.?0+$/, '')} @ ${transaction.price.toFixed(2)}</span><time className="text-[var(--text-tertiary)]">{new Date(transaction.date).toLocaleDateString()}</time></div>)}</div> : <p className="py-3 text-xs text-[var(--text-tertiary)]">Edit a holding to create the first transaction.</p>}
-      </div>
-
-      <div className="mb-3 flex justify-end">
-        <label className="flex items-center gap-2 rounded-[7px] border border-white/[.09] bg-white/[.03] px-3 py-2 text-xs text-[#89918b]">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="eyebrow text-ink-muted">Positions</h3>
+        <label className="flex items-center gap-2 text-xs text-ink-muted">
           <span>Sector</span>
           <select
             value={sectorFilter}
             onChange={(event) => onSectorChange(event.target.value)}
-            className="bg-[#101411] text-white outline-none"
+            className="field h-11 w-auto min-w-28 py-0 lg:h-9"
           >
             <option value="All">All</option>
             {availableSectors.map((sector) => (
@@ -119,56 +147,51 @@ export default function PortfolioSummary({
         </label>
       </div>
 
-      <div className="overflow-hidden border border-white/[.07] rounded-[7px]">
-        <table className="data-table min-w-full border-separate border-spacing-0 text-left text-[#a2aaa4]">
-          <thead className="bg-black/20">
+      <div className="overflow-x-auto rounded-control border border-line">
+        <table className={TABLE_CLASS}>
+          <thead>
             <tr>
               {['Symbol / Company', 'Sector', 'Shares', 'Last Price', 'Market Value', 'Day P/L', 'Day P/L %', 'Total P/L', 'Actions'].map((header) => (
-                <th key={header} className={`border-b border-white/[.07] px-4 py-3 whitespace-nowrap ${['Symbol / Company', 'Sector'].includes(header) ? '!text-left' : ''}`}>{header}</th>
+                <th key={header} className={`${HEAD_CELL_CLASS} ${['Symbol / Company', 'Sector'].includes(header) ? '!text-left' : ''}`}>{header}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-                {(filteredStocks ?? []).filter(stock => (quantities?.[stock.ticker] ?? 0) > 0).map((stock) => {
+            {heldInSector.map((stock) => {
               const quantity = quantities?.[stock.ticker] ?? 0;
               const { marketValue, dayPnL, dayPnLPercent, totalPnL } = calculateSummaryRow(stock, quantity, averageCosts?.[stock.ticker]);
 
-              const company = getCompanyMetadata(stock.ticker, stock.name);
-
               return (
-                <tr
-                  key={stock.ticker}
-                  className={`hover:bg-white/[.04] ${stock.ticker === selectedTicker ? 'bg-white/[.035]' : ''}`}
-                  onClick={() => onSelect(stock.ticker)}
-                >
-                  <td className={`min-w-[220px] border-l-2 px-4 py-3 !text-left ${stock.ticker === selectedTicker ? 'border-lime-300' : 'border-transparent'}`}>
-                    <div className="flex items-center gap-3">
-                      <CompanyMark ticker={stock.ticker} size={28} />
-                      <div className="min-w-0">
-                        <div className="font-semibold text-white">{stock.ticker}</div>
-                        <div className="truncate text-xs text-[var(--text-secondary)]">{company.name}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 !text-left">{stock.sector}</td>
-                  <td className="px-4 py-3">{quantity}</td>
-                  <td className="px-4 py-3 text-white">${stock.currentPrice.toFixed(2)}</td>
-                  <td className="px-4 py-3 text-white">${marketValue.toFixed(2)}</td>
-                  <td className={`px-4 py-3 font-medium ${dayPnL >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                <tr key={stock.ticker} {...rowProps(stock.ticker, selectedTicker, onSelect)}>
+                  <SymbolCell ticker={stock.ticker} selected={stock.ticker === selectedTicker} onSelect={onSelect} sub={getCompanyMetadata(stock.ticker, stock.name).name} />
+                  <td className="px-3 py-1 !text-left font-sans">{stock.sector}</td>
+                  <td className="px-3 py-1 text-ink">{quantity}</td>
+                  <td className="px-3 py-1 text-ink">${stock.currentPrice.toFixed(2)}</td>
+                  <td className="px-3 py-1 text-ink">${marketValue.toFixed(2)}</td>
+                  <td className={`px-3 py-1 ${toneOf(dayPnL)}`}>
                     {dayPnL >= 0 ? '+' : '-'}${Math.abs(dayPnL).toFixed(2)}
                   </td>
-                  <td className={`px-4 py-3 font-medium ${dayPnLPercent >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>{dayPnLPercent >= 0 ? '+' : ''}{dayPnLPercent.toFixed(2)}%</td>
-                  <td className={`px-4 py-3 font-medium ${totalPnL >= 0 ? 'text-[var(--positive)]' : 'text-[var(--negative)]'}`}>
+                  <td className={`px-3 py-1 ${toneOf(dayPnLPercent)}`}>{dayPnLPercent >= 0 ? '+' : ''}{dayPnLPercent.toFixed(2)}%</td>
+                  <td className={`px-3 py-1 ${toneOf(totalPnL)}`}>
                     {totalPnL >= 0 ? '+' : '-'}${Math.abs(totalPnL).toFixed(2)}
                   </td>
-                  <td className="px-4 py-3">
-                    <button type="button" aria-label={`Edit ${stock.ticker} holding`} onClick={(event) => { event.stopPropagation(); onEditHolding(stock.ticker); }} className="grid h-8 w-8 place-items-center rounded-[6px] text-[var(--text-secondary)] hover:bg-white/[.07] hover:text-white"><MoreHorizontal className="h-4 w-4" /></button>
+                  <td className="px-3 py-1">
+                    <button type="button" aria-label={`Edit ${stock.ticker} holding`} onClick={(event) => { event.stopPropagation(); onEditHolding(stock.ticker); }} className="icon-btn icon-btn-plain icon-btn-sm ml-auto">
+                      <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+                    </button>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        {heldInSector.length === 0 && (
+          <p className="border-t border-line px-4 py-8 text-center text-sm text-ink-muted">
+            {holdingStocks.length === 0
+              ? 'No holdings yet. Add the shares you own and they appear here with their value and profit or loss.'
+              : `No holdings in ${sectorFilter}.`}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,6 @@ import {
   addTicker,
   createHoldingTransaction,
   createPortfolioIn,
-  incrementQuantity,
   omitKey,
   omitTicker,
   prependTransaction,
@@ -14,10 +13,10 @@ import {
   sanitizeQuantity,
   setAverageCost,
   setCash,
+  listTickerIfHeld,
+  pruneQuantities,
   setQuantity,
-  setTickerListed,
   splitHoldings,
-  syncQuantitiesWithPortfolios,
   type PortfolioMaps,
 } from '../utils/portfolioState';
 import type {
@@ -56,19 +55,18 @@ export function usePortfolioState() {
     setSelectedTicker(saved.portfolios[firstPortfolio]?.[0] ?? STARTER_STOCKS[0]);
   };
 
-  /** Lists a ticker in the active portfolio, adds one share, and selects it. */
+  /** Puts a ticker on the active portfolio's watchlist (with no shares) and selects it. */
   const addStock = (ticker: string) => {
     const upper = ticker.toUpperCase();
     setPortfolios(prev => addTicker(prev, activePortfolio, upper));
-    setPortfolioQuantities(prev => incrementQuantity(prev, activePortfolio, upper));
     setSelectedTicker(upper);
   };
 
-  /** Sets a share count in the active portfolio (zero unlists the ticker) and selects it. */
+  /** Sets a share count in the active portfolio and selects the ticker. Zero shares keeps it on the watchlist. */
   const updateStockQuantity = (ticker: string, nextQuantity: number) => {
     const upper = ticker.toUpperCase();
     const safeQuantity = sanitizeQuantity(nextQuantity);
-    setPortfolios(prev => setTickerListed(prev, activePortfolio, upper, safeQuantity));
+    setPortfolios(prev => listTickerIfHeld(prev, activePortfolio, upper, safeQuantity));
     setPortfolioQuantities(prev => setQuantity(prev, activePortfolio, upper, safeQuantity));
     setSelectedTicker(upper);
   };
@@ -162,9 +160,9 @@ export function usePortfolioState() {
     }
   }, [activePortfolio, portfolios, selectedTicker]);
 
-  // Keep share counts in step with which tickers are listed.
+  // Drop share counts for tickers that left the watchlist. Listed stocks without an entry hold zero.
   useEffect(() => {
-    setPortfolioQuantities(prev => syncQuantitiesWithPortfolios(prev, portfolios));
+    setPortfolioQuantities(prev => pruneQuantities(prev, portfolios));
   }, [portfolios]);
 
   return {

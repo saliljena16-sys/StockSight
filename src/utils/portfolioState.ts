@@ -1,6 +1,6 @@
 // Pure transforms for the per-portfolio state maps. Each function mirrors one state updater, so
 // the hook can keep the maps as separate useState slices with identical semantics.
-import type { PortfolioState } from './portfolioDb';
+import type { HoldingMap, PortfolioMap, PortfolioState } from './portfolioDb';
 // Explicit extension so the Node test runner can load this module directly.
 import { portfolioNameError } from './portfolioNames.ts';
 import type {
@@ -27,12 +27,13 @@ export function removeTicker(prev: PortfolioTickers, portfolio: string, ticker: 
   return { ...prev, [portfolio]: current.filter(item => item !== ticker) };
 }
 
-/** List membership after a share count is set: a positive count lists the ticker, zero unlists it. */
-export function setTickerListed(prev: PortfolioTickers, portfolio: string, ticker: string, quantity: number): PortfolioTickers {
+/**
+ * Lists `ticker` when it now has shares and isn't listed yet. Never unlists: a stock whose shares
+ * drop to zero stays on the watchlist.
+ */
+export function listTickerIfHeld(prev: PortfolioTickers, portfolio: string, ticker: string, quantity: number): PortfolioTickers {
   const current = prev[portfolio] ?? [];
-  const exists = current.includes(ticker);
-  if (quantity > 0 && !exists) return { ...prev, [portfolio]: [...current, ticker] };
-  if (quantity === 0 && exists) return { ...prev, [portfolio]: current.filter(item => item !== ticker) };
+  if (quantity > 0 && !current.includes(ticker)) return { ...prev, [portfolio]: [...current, ticker] };
   return prev;
 }
 
@@ -40,17 +41,6 @@ export function setTickerListed(prev: PortfolioTickers, portfolio: string, ticke
 
 /** Clamps a user-entered share count to a non-negative number (non-numbers become 0). */
 export const sanitizeQuantity = (value: number) => Math.max(0, Number(value) || 0);
-
-/** Adds one share of `ticker` (starting from zero when it isn't held). */
-export function incrementQuantity(prev: PortfolioQuantities, portfolio: string, ticker: string): PortfolioQuantities {
-  return {
-    ...prev,
-    [portfolio]: {
-      ...(prev[portfolio] ?? {}),
-      [ticker]: (prev[portfolio]?.[ticker] ?? 0) + 1,
-    },
-  };
-}
 
 /** Sets a share count; zero or less removes the entry. */
 export function setQuantity(prev: PortfolioQuantities, portfolio: string, ticker: string, quantity: number): PortfolioQuantities {
@@ -79,35 +69,23 @@ export function setCash(prev: PortfolioCash, portfolio: string, value: string | 
 }
 
 /**
- * Every listed ticker gets at least one share and unlisted tickers lose theirs; maps for deleted
- * portfolios are dropped. Always returns a new object.
+ * Drops share counts for tickers that are no longer listed and for deleted portfolios. Never adds
+ * shares: a listed ticker without an entry simply holds zero. Returns `prev` when nothing changes.
  */
-export function syncQuantitiesWithPortfolios(prev: PortfolioQuantities, portfolios: PortfolioTickers): PortfolioQuantities {
-  const next = { ...prev };
-  Object.keys(portfolios).forEach((portfolioName) => {
-    const current = portfolios[portfolioName] ?? [];
-    next[portfolioName] = { ...(next[portfolioName] ?? {}) };
-
-    current.forEach((ticker) => {
-      if (!next[portfolioName][ticker]) {
-        next[portfolioName][ticker] = 1;
-      }
-    });
-
-    Object.keys(next[portfolioName]).forEach((ticker) => {
-      if (!current.includes(ticker)) {
-        delete next[portfolioName][ticker];
-      }
-    });
-  });
-
-  Object.keys(next).forEach((portfolioName) => {
-    if (!portfolios[portfolioName]) {
-      delete next[portfolioName];
+export function pruneQuantities(prev: PortfolioQuantities, portfolios: PortfolioTickers): PortfolioQuantities {
+  let changed = false;
+  const next: PortfolioQuantities = {};
+  for (const [name, holdings] of Object.entries(prev)) {
+    const listed = portfolios[name];
+    if (!listed) {
+      changed = true;
+      continue;
     }
-  });
-
-  return next;
+    const kept = Object.fromEntries(Object.entries(holdings).filter(([ticker]) => listed.includes(ticker)));
+    if (Object.keys(kept).length !== Object.keys(holdings).length) changed = true;
+    next[name] = kept;
+  }
+  return changed ? next : prev;
 }
 
 // --- transactions ---
@@ -208,7 +186,7 @@ export function splitHoldings(holdings: PortfolioState['holdings']): { quantitie
   };
 }
 
-/** Builds the persisted shape. Holdings cover only listed portfolios; missing average costs save as 0. */
+/** Builds the persisted shape (current version). Holdings cover only listed portfolios; missing average costs save as 0. */
 export function toPortfolioState(maps: {
   portfolios: PortfolioTickers;
   quantities: PortfolioQuantities;
@@ -218,5 +196,80 @@ export function toPortfolioState(maps: {
 }): PortfolioState {
   const { portfolios, quantities, averageCosts, cash, transactions } = maps;
   const holdings = Object.fromEntries(Object.keys(portfolios).map(name => [name, Object.fromEntries(Object.entries(quantities[name] ?? {}).map(([ticker, quantity]) => [ticker, { quantity, averageCost: averageCosts[name]?.[ticker] ?? 0 }]))]));
-  return { portfolios, holdings, cash, transactions };
+  return { portfolios, holdings, cash, transactions, version: PORTFOLIO_STATE_VERSION };
+}
+
+// --- saved state: defaults, validation, migration ---
+
+/**
+ * Version of the saved shape. 2: stocks on the watchlist hold zero shares unless a holding was
+ * entered (version 1, unversioned, gave every listed stock an automatic share).
+ */
+export const PORTFOLIO_STATE_VERSION = 2;
+
+export const DEFAULT_PORTFOLIOS: PortfolioMap = { 'My Watchlist': ['AAPL', 'MSFT', 'NVDA'] };
+export const DEFAULT_PORTFOLIO_STATE: PortfolioState = {
+  portfolios: DEFAULT_PORTFOLIOS,
+  holdings: { 'My Watchlist': {} },
+  cash: { 'My Watchlist': 0 },
+  transactions: { 'My Watchlist': [] },
+  version: PORTFOLIO_STATE_VERSION,
+};
+
+const POPULAR_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA', 'JPM', 'AMD', 'NFLX', 'WMT', 'JNJ'];
+
+/** A fresh guest portfolio: four random popular stocks on the watchlist, no holdings. */
+export function createGuestPortfolioState(): PortfolioState {
+  const shuffled = [...POPULAR_TICKERS];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  const tickers = shuffled.slice(0, 4);
+  return {
+    portfolios: { 'Popular Picks': tickers },
+    holdings: { 'Popular Picks': {} },
+    cash: { 'Popular Picks': 0 },
+    transactions: { 'Popular Picks': [] },
+    version: PORTFOLIO_STATE_VERSION,
+  };
+}
+
+/**
+ * Removes the automatic shares that unversioned saves gave every watched stock. A holding is
+ * treated as automatic only when it is exactly 1 share with no average cost and no transaction
+ * for that stock in that portfolio; anything a user entered keeps an average cost or a
+ * transaction, so real holdings are left alone.
+ */
+export function migrateLegacyHoldings(state: PortfolioState): PortfolioState {
+  const holdings: HoldingMap = Object.fromEntries(Object.entries(state.holdings).map(([name, items]) => {
+    const traded = new Set((state.transactions[name] ?? []).map(transaction => transaction.ticker));
+    const kept = Object.entries(items).filter(([ticker, holding]) => {
+      const automatic = holding.quantity === 1 && !(holding.averageCost > 0) && !traded.has(ticker);
+      return !automatic;
+    });
+    return [name, Object.fromEntries(kept)];
+  }));
+  return { ...state, holdings, version: PORTFOLIO_STATE_VERSION };
+}
+
+/**
+ * Validates a loaded record (local or cloud) and upgrades it to the current version. Falls back
+ * to the default state for anything unusable; accepts the oldest shape (a bare portfolio map).
+ */
+export function normalizePortfolioState(value: unknown): PortfolioState {
+  if (!value || typeof value !== 'object') return DEFAULT_PORTFOLIO_STATE;
+  const candidate = value as Partial<PortfolioState>;
+  const portfolios = candidate.portfolios && typeof candidate.portfolios === 'object'
+    ? candidate.portfolios
+    : value as PortfolioMap;
+  if (!Object.values(portfolios).every(Array.isArray)) return DEFAULT_PORTFOLIO_STATE;
+  const state: PortfolioState = {
+    portfolios,
+    holdings: candidate.holdings ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, {}])),
+    cash: candidate.cash ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, 0])),
+    transactions: candidate.transactions ?? Object.fromEntries(Object.keys(portfolios).map(name => [name, []])),
+    version: PORTFOLIO_STATE_VERSION,
+  };
+  return candidate.version === undefined ? migrateLegacyHoldings(state) : state;
 }

@@ -1,5 +1,8 @@
-/** Top-level workspace views in the primary navigation. */
-export type PrimaryView = 'watchlist' | 'markets' | 'screeners' | 'news' | 'analytics';
+/**
+ * Top-level views in the primary navigation. "insights" holds what used to be three thin views
+ * (Markets, Screeners, Analytics), each of which only looked at the stocks in the portfolio.
+ */
+export type PrimaryView = 'portfolio' | 'insights' | 'news';
 
 /** Tabs in the selected-stock detail panel. */
 export type DetailTab = 'chart' | 'analysis' | 'forecast' | 'compare';

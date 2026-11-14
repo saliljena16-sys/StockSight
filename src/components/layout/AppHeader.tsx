@@ -1,6 +1,8 @@
-import type { RefObject } from 'react';
-import { BarChart3, Loader2, Plus, RefreshCw, Search, UserRound, WifiOff } from 'lucide-react';
+import { useState, type RefObject } from 'react';
+import { Loader2, RefreshCw, Search, UserRound } from 'lucide-react';
 import type { PrimaryView } from '../../types/views';
+import Logo from '../ui/Logo';
+import { NAV_ITEMS } from './navItems';
 
 interface AppHeaderProps {
   primaryView: PrimaryView;
@@ -18,10 +20,13 @@ interface AppHeaderProps {
   userEmail: string | null;
   onSignIn: () => void;
   onSignOut: () => void;
-  onAddStock: () => void;
 }
 
-/** Sticky top bar: brand, desktop navigation and search, data status, refresh, account, add stock. */
+/**
+ * Sticky top bar: wordmark, navigation (tablet and up), symbol search, data status, refresh and
+ * account. On phones the search field is a drawer under the bar that opens when it has focus,
+ * so one input serves every width and Ctrl/Cmd+K always lands in it.
+ */
 export default function AppHeader({
   primaryView,
   onNavigate,
@@ -38,108 +43,112 @@ export default function AppHeader({
   userEmail,
   onSignIn,
   onSignOut,
-  onAddStock,
 }: AppHeaderProps) {
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const toggleSearch = () => {
+    const input = searchInputRef.current;
+    if (!input) return;
+    if (document.activeElement === input) input.blur();
+    else input.focus();
+  };
+
   return (
-    <header className="sticky top-0 z-40 border-b border-white/[.09] bg-[#090d0f]/95 backdrop-blur-xl">
-      <div className="mx-auto w-[calc(100%-24px)] max-w-[1680px] sm:w-[calc(100%-32px)] xl:w-[calc(100%-48px)]">
-        <div className="flex h-16 items-center gap-3 sm:h-[72px] sm:gap-6">
-          <div className="flex shrink-0 items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-[8px] bg-lime-300 text-[#09100b] sm:h-10 sm:w-10">
-              <BarChart3 className="h-5 w-5" />
-            </div>
-            <div>
-              <h1 className="text-[17px] font-semibold leading-5 tracking-[-.03em] text-white">StockSight</h1>
-              <p className="hidden text-[10px] uppercase tracking-[.18em] text-[#727b74] min-[370px]:block">Market workspace</p>
-            </div>
-          </div>
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas/75 backdrop-blur-xl">
+      <div className="relative mx-auto flex h-14 w-full max-w-[1600px] items-center gap-2 px-4 sm:px-6 md:h-16 md:gap-4 lg:px-8">
+        <Logo />
 
-          <nav className="hidden h-full items-center gap-7 xl:flex" aria-label="Primary navigation">
+        <nav className="ml-2 hidden items-center md:flex lg:ml-4" aria-label="Primary navigation">
+          {NAV_ITEMS.map(({ view, label }) => (
             <button
+              key={view}
               type="button"
-              aria-current={primaryView === 'watchlist' ? 'page' : undefined}
-              onClick={() => { onNavigate('watchlist'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-              className={`relative h-full text-sm font-medium focus-visible:rounded-sm ${primaryView === 'watchlist' ? 'text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-lime-300' : 'text-[var(--text-secondary)] hover:text-white'}`}
+              aria-current={primaryView === view ? 'page' : undefined}
+              onClick={() => onNavigate(view)}
+              className="nav-link"
             >
-              Watchlist
+              {label}
             </button>
-            {([['Markets', 'markets'], ['Screeners', 'screeners'], ['News', 'news'], ['Analytics', 'analytics']] as Array<[string, PrimaryView]>).map(([item, view]) => (
-              <button
-                key={item}
-                type="button"
-                aria-current={primaryView === view ? 'page' : undefined}
-                onClick={() => { onNavigate(view); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                className={`relative h-full text-sm font-medium ${primaryView === view ? 'text-white after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-lime-300' : 'text-[var(--text-secondary)] hover:text-white'}`}
-              >
-                {item}
-              </button>
-            ))}
-          </nav>
+          ))}
+        </nav>
 
-          <div className="relative ml-auto hidden min-w-[240px] max-w-[360px] flex-1 lg:block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+        <div
+          data-open={searchFocused}
+          className="absolute inset-x-0 top-full border-b border-line bg-canvas/95 px-4 py-2 backdrop-blur-xl transition-[opacity,transform] duration-150 max-md:pointer-events-none max-md:-translate-y-1 max-md:opacity-0 max-md:data-[open=true]:pointer-events-auto max-md:data-[open=true]:translate-y-0 max-md:data-[open=true]:opacity-100 md:static md:ml-auto md:w-full md:max-w-[15rem] md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none lg:max-w-xs xl:max-w-sm"
+        >
+          <label className="relative block">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" aria-hidden="true" />
             <input
               ref={searchInputRef}
               value={searchQuery}
               onChange={(event) => onSearchChange(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && onSearchSubmit()}
-              placeholder="Search symbols, companies, or ideas…"
-              aria-label="Search symbols, companies, or ideas"
-              className="h-10 w-full rounded-[8px] border border-white/[.1] bg-[var(--surface-1)] pl-10 pr-16 text-sm text-white placeholder:text-[var(--text-tertiary)] focus:border-lime-300/35 focus:outline-none"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="Find or add a symbol"
+              aria-label="Find or add a symbol"
+              enterKeyHint="search"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="field rounded-full pl-10 md:h-10 lg:pr-16"
             />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-white/[.1] bg-white/[.035] px-1.5 py-0.5 font-sans text-[10px] text-[var(--text-tertiary)]">Ctrl K</kbd>
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-[5px] border border-line px-1.5 py-0.5 font-mono text-[10px] text-ink-dim lg:block">Ctrl K</kbd>
+          </label>
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0">
+          <div className="hidden items-center gap-2 pr-1 lg:flex">
+            {hasLiveData ? (
+              <>
+                <span className={`h-1.5 w-1.5 rounded-full ${allLiveData ? 'bg-gain' : 'bg-warn'}`} aria-hidden="true" />
+                <span className={`eyebrow ${allLiveData ? 'text-gain' : 'text-warn'}`}>{allLiveData ? 'Live' : 'Partial data'}</span>
+              </>
+            ) : isLoading ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin text-ink-dim" aria-hidden="true" />
+                <span className="eyebrow">Syncing</span>
+              </>
+            ) : (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden="true" />
+                <span className="eyebrow text-warn">Demo data</span>
+              </>
+            )}
+            <span className="num hidden text-xs text-ink-dim xl:inline" title="Last update">{lastUpdate.toLocaleTimeString()}</span>
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-            <div className="hidden items-center gap-2 md:flex">
-              {hasLiveData ? (
-                <>
-                  <span className="h-2 w-2 rounded-full bg-[var(--positive)]" />
-                  <span className="leading-tight">
-                    <span className={`block text-[11px] font-semibold uppercase tracking-[.06em] ${allLiveData ? 'text-[var(--positive)]' : 'text-[var(--warning)]'}`}>{allLiveData ? 'Market open' : 'Partial data'}</span>
-                    <span className="hidden text-[10px] text-[var(--text-tertiary)] 2xl:block">Finnhub + Yahoo</span>
-                  </span>
-                </>
-              ) : isLoading ? (
-                <>
-                  <Loader2 className="w-3 h-3 text-[#89918b] animate-spin" />
-                  <span className="text-[#89918b]">Syncing data</span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3 h-3 text-amber-500" />
-                  <span className="text-[#e4b75c]">Demo data</span>
-                </>
-              )}
-            </div>
+          <button
+            type="button"
+            className="icon-btn md:hidden"
+            aria-label="Search"
+            aria-expanded={searchFocused}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={toggleSearch}
+          >
+            <Search className="h-4 w-4" aria-hidden="true" />
+          </button>
 
-            <div className="hidden xl:flex items-center gap-2 text-xs text-[var(--text-secondary)] font-mono">
-              <span>{lastUpdate.toLocaleTimeString()}</span>
-            </div>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            aria-label="Refresh data"
+            title="Refresh data"
+            className="icon-btn"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
+          </button>
 
-            <button
-              onClick={onRefresh}
-              disabled={isRefreshing}
-              aria-label="Refresh data"
-              className="grid h-10 w-10 place-items-center rounded-[8px] border border-white/[.1] bg-white/[.025] hover:bg-white/[.06] disabled:opacity-50"
-              title="Refresh data"
-            >
-              <RefreshCw className={`w-4 h-4 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-
-            <button onClick={userEmail ? onSignOut : onSignIn} aria-label={userEmail ? `Account: ${userEmail}. Sign out` : 'Sign in'} title={userEmail ?? 'Sign in'} className="grid h-10 w-10 place-items-center rounded-full border border-white/[.16] bg-white/[.035] text-[var(--text-secondary)] hover:border-white/25 hover:text-white">
-              {userEmail ? <span className="text-xs font-semibold text-white">{userEmail.charAt(0).toUpperCase()}</span> : <UserRound className="h-4 w-4" />}
-            </button>
-
-            <button
-              onClick={onAddStock}
-              aria-label="Add stock"
-              className="flex h-10 min-w-10 items-center justify-center gap-2 rounded-[8px] bg-lime-300 px-0 text-sm font-semibold text-[#10140f] hover:bg-lime-200 sm:px-4"
-            >
-              <Plus className="w-4 h-4" />
-              <span className="hidden sm:inline">Add Stock</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={userEmail ? onSignOut : onSignIn}
+            aria-label={userEmail ? `Account: ${userEmail}. Sign out` : 'Sign in'}
+            title={userEmail ?? 'Sign in'}
+            className="icon-btn"
+          >
+            {userEmail ? <span className="text-xs font-semibold text-ink">{userEmail.charAt(0).toUpperCase()}</span> : <UserRound className="h-4 w-4" aria-hidden="true" />}
+          </button>
         </div>
       </div>
     </header>

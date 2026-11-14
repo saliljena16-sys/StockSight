@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { calculatePortfolioSummary, calculateSectorAllocation } from './utils/portfolioMetrics';
+import { scrollToTop } from './utils/scroll';
 import type { PrimaryView } from './types/views';
 import { usePortfolioState } from './hooks/usePortfolioState';
 import { useStockQuotes } from './hooks/useStockQuotes';
@@ -9,8 +10,7 @@ import { useStockNews } from './hooks/useStockNews';
 import { useSymbolSearch } from './hooks/useSymbolSearch';
 import { useWatchlistView } from './hooks/useWatchlistView';
 import AppHeader from './components/layout/AppHeader';
-import MobilePrimaryNav from './components/layout/MobilePrimaryNav';
-import MobileSearchBar from './components/layout/MobileSearchBar';
+import MobileTabBar from './components/layout/MobileTabBar';
 import NoticeBanner from './components/layout/NoticeBanner';
 import AppFooter from './components/layout/AppFooter';
 import PortfolioBar from './components/watchlist/PortfolioBar';
@@ -29,7 +29,7 @@ import HoldingModal from './components/HoldingModal';
  * table), the selected-stock detail panel, and the modals.
  */
 export default function App() {
-  const [primaryView, setPrimaryView] = useState<PrimaryView>('watchlist');
+  const [primaryView, setPrimaryView] = useState<PrimaryView>('portfolio');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [editingTicker, setEditingTicker] = useState<string | null>(null);
@@ -75,23 +75,29 @@ export default function App() {
   const summary = calculatePortfolioSummary(stocksData ?? [], portfolioQuantities[activePortfolio], portfolioAverageCosts[activePortfolio], portfolioCash[activePortfolio]);
   const sectorAllocation = calculateSectorAllocation(summary.holdingStocks, portfolioQuantities[activePortfolio]);
 
-  /** Jump from another view to a stock's price chart in the watchlist. */
+  const navigate = (next: PrimaryView) => {
+    setPrimaryView(next);
+    scrollToTop();
+  };
+
+  /** Jump from another view to a stock's price chart on the portfolio screen. */
   const inspectStock = (ticker: string) => {
     setSelectedTicker(ticker);
-    setPrimaryView('watchlist');
+    setPrimaryView('portfolio');
     view.setActiveTab('chart');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToTop();
   };
 
   return (
-    <div className="min-h-screen bg-transparent text-[#f3f5f2]">
+    <div className="relative isolate min-h-screen">
+      <div className="app-backdrop" aria-hidden="true" />
       <AppHeader
         primaryView={primaryView}
-        onNavigate={setPrimaryView}
+        onNavigate={navigate}
         searchQuery={search.query}
         onSearchChange={search.setQuery}
         onSearchSubmit={search.submit}
-        searchInputRef={search.desktopInputRef}
+        searchInputRef={search.inputRef}
         hasLiveData={hasLiveData}
         allLiveData={allLiveData}
         isLoading={isLoading}
@@ -101,14 +107,9 @@ export default function App() {
         userEmail={userEmail}
         onSignIn={() => setShowAuthModal(true)}
         onSignOut={signOut}
-        onAddStock={() => setShowAddModal(true)}
       />
 
-      <MobilePrimaryNav primaryView={primaryView} onNavigate={setPrimaryView} />
-
-      <MobileSearchBar value={search.query} onChange={search.setQuery} onSubmit={search.submit} inputRef={search.mobileInputRef} />
-
-      {primaryView === 'watchlist' && (
+      {primaryView === 'portfolio' && (
         <PortfolioBar
           portfolioNames={Object.keys(portfolios)}
           activePortfolio={activePortfolio}
@@ -124,19 +125,20 @@ export default function App() {
       {/* Main Content */}
       <main className="mx-auto min-w-0 w-[calc(100%-24px)] max-w-[1680px] py-4 sm:w-[calc(100%-32px)] sm:py-6 xl:w-[calc(100%-48px)]">
         {notice && <NoticeBanner message={notice} onDismiss={() => setNotice(null)} />}
-        {primaryView !== 'watchlist' && (
+        {primaryView !== 'portfolio' && (
           <PrimaryWorkspace
             view={primaryView}
             stocks={stocksData ?? []}
+            loading={!stocksData && activeTickers.length > 0}
             quantities={portfolioQuantities[activePortfolio] ?? {}}
             totalValue={summary.totalPortfolioValue}
             cash={summary.cashBalance}
             onInspect={inspectStock}
           />
         )}
-        {primaryView === 'watchlist' && isLoading && !stocksData && <WatchlistLoading />}
+        {primaryView === 'portfolio' && isLoading && !stocksData && <WatchlistLoading />}
 
-        {primaryView === 'watchlist' && stocksData && (
+        {primaryView === 'portfolio' && stocksData && (
           <WatchlistToolbar
             viewMode={view.viewMode}
             tableTab={view.tableTab}
@@ -146,7 +148,7 @@ export default function App() {
           />
         )}
 
-        {primaryView === 'watchlist' && stocksData && view.viewMode === 'table' && (
+        {primaryView === 'portfolio' && stocksData && view.viewMode === 'table' && (
           <WatchlistTable
             tableTab={view.tableTab}
             stocks={stocksData}
@@ -167,7 +169,7 @@ export default function App() {
           />
         )}
 
-        {primaryView === 'watchlist' && stocksData && view.viewMode === 'cards' && (
+        {primaryView === 'portfolio' && stocksData && view.viewMode === 'cards' && (
           <WatchlistCards
             stocks={stocksData}
             selectedTicker={selectedTicker}
@@ -178,7 +180,7 @@ export default function App() {
           />
         )}
 
-        {primaryView === 'watchlist' && selectedStock && (
+        {primaryView === 'portfolio' && selectedStock && (
           <StockDetailPanel
             selectedStock={selectedStock}
             stocks={stocksData ?? []}
@@ -191,6 +193,7 @@ export default function App() {
       </main>
 
       <AppFooter showDemoNote={!hasLiveData && Boolean(stocksData)} />
+      <MobileTabBar primaryView={primaryView} onNavigate={navigate} />
 
       <AddStockModal
         isOpen={showAddModal}

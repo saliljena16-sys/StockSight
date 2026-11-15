@@ -10,7 +10,7 @@ interface MobileTabBarProps {
 export default function MobileTabBar({ primaryView, onNavigate }: MobileTabBarProps) {
   return (
     <nav
-      aria-label="Primary navigation"
+      aria-label="Primary (tab bar)"
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/85 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
     >
       <div className="mx-auto grid max-w-md grid-cols-3">

@@ -3,6 +3,7 @@ import type { StockInfo } from '../../utils/mockData';
 import type { PortfolioSummary as PortfolioSummaryData } from '../../utils/portfolioMetrics';
 import type { Transaction } from '../../types/portfolio';
 import type { WatchlistTableTab } from '../../types/views';
+import { handleTabListKeyDown, tabProps } from '../../utils/tabs';
 import PortfolioSummary from './PortfolioSummary';
 import HoldingsTable from './HoldingsTable';
 import KeyStatsTable from './KeyStatsTable';
@@ -36,6 +37,8 @@ const TABS: Array<{ label: string; value: WatchlistTableTab }> = [
   { label: 'Key Stats', value: 'keyStats' },
   { label: 'Performance', value: 'performance' },
 ];
+const TAB_VALUES = TABS.map(tab => tab.value);
+const PANEL_ID = 'table-tabpanel';
 
 /** The portfolio's detailed tables, below the holdings and chart: tabs plus the active tab's table. */
 export default function WatchlistTable({
@@ -60,13 +63,17 @@ export default function WatchlistTable({
   return (
     <section aria-label="Portfolio tables" className="panel mt-4 overflow-hidden">
       <div className="flex items-center justify-between gap-4 border-b border-line px-4 sm:px-5">
-        <div className="mobile-scroll flex items-center gap-5 overflow-x-auto" role="group" aria-label="Portfolio tables">
+        <div
+          className="mobile-scroll flex items-center gap-5 overflow-x-auto"
+          role="tablist"
+          aria-label="Portfolio tables"
+          onKeyDown={event => handleTabListKeyDown(event, TAB_VALUES, tableTab, onSelectTab)}
+        >
           {TABS.map((tab) => (
             <button
               key={tab.value}
-              type="button"
+              {...tabProps('table', tab.value, tableTab === tab.value, PANEL_ID)}
               onClick={() => onSelectTab(tab.value)}
-              aria-pressed={tableTab === tab.value}
               className="tab lg:min-h-12"
             >
               {tab.label}
@@ -78,7 +85,7 @@ export default function WatchlistTable({
         </button>
       </div>
 
-      <div className="overflow-x-auto">
+      <div id={PANEL_ID} role="tabpanel" aria-labelledby={`table-tab-${tableTab}`} className="overflow-x-auto">
         {tableTab === 'summary' && (
           <PortfolioSummary
             summary={summary}

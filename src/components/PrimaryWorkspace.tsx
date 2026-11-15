@@ -4,6 +4,7 @@ import { StockInfo } from '../utils/mockData';
 import { analyzeStock } from '../utils/technicalAnalysis';
 import { annualizedVolatility30d as volatility, dayChangePercent as changePercent, returnToCurrentPrice as periodReturn } from '../utils/marketMetrics';
 import { formatSignedPercent } from '../utils/format';
+import { handleTabListKeyDown, tabProps } from '../utils/tabs';
 import type { NewsItem } from '../types/news';
 import CompanyMark from './CompanyMark';
 import Delta from './ui/Delta';
@@ -24,7 +25,7 @@ const ViewHeading = ({ eyebrow, title, description, children }: { eyebrow: strin
   <div className="mb-6 flex flex-col gap-4 pt-6 sm:flex-row sm:items-end sm:justify-between lg:pt-9">
     <div>
       <p className="eyebrow mb-2">{eyebrow}</p>
-      <h2 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink sm:text-4xl">{title}</h2>
+      <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.035em] text-ink sm:text-4xl">{title}</h1>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-muted">{description}</p>
     </div>
     {children}
@@ -92,7 +93,7 @@ function SignalsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks'
           </select>
         </div>
         <div className="flex items-center justify-between px-4 py-3 sm:px-5">
-          <h3 className="text-sm font-semibold text-ink">Matches</h3>
+          <h2 className="text-sm font-semibold text-ink">Matches</h2>
           <span className="eyebrow">{results.length} symbols</span>
         </div>
         <div className="overflow-x-auto border-t border-line">
@@ -129,7 +130,7 @@ function SignalsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks'
       <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
         <section className="panel overflow-hidden">
           <div className="border-b border-line px-4 py-4 sm:px-5">
-            <h3 className="text-sm font-semibold text-ink">Leader board</h3>
+            <h2 className="text-sm font-semibold text-ink">Leader board</h2>
             <p className="mt-1 text-xs text-ink-dim">Ranked by today&apos;s move</p>
           </div>
           <div className="divide-y divide-line">
@@ -154,7 +155,7 @@ function SignalsView({ stocks, onInspect }: Pick<PrimaryWorkspaceProps, 'stocks'
         </section>
 
         <section className="panel p-4 sm:p-5">
-          <h3 className="mb-5 text-sm font-semibold text-ink">Sector tape</h3>
+          <h2 className="mb-5 text-sm font-semibold text-ink">Sector tape</h2>
           <div className="space-y-4">
             {sectors.map(sector => (
               <div key={sector.name}>
@@ -186,7 +187,7 @@ function RiskView({ stocks, quantities, totalValue, cash, onInspect }: Omit<Prim
     return (
       <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
         <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><PieChart className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
-        <h3 className="text-base font-semibold text-ink">No holdings to analyse yet</h3>
+        <h2 className="text-base font-semibold text-ink">No holdings to analyse yet</h2>
         <p className="max-w-md text-sm leading-6 text-ink-muted">Add share quantities to see allocation analytics: how concentrated your portfolio is, how volatile it has been, and a diversification score.</p>
       </div>
     );
@@ -206,7 +207,7 @@ function RiskView({ stocks, quantities, totalValue, cash, onInspect }: Omit<Prim
       <div className="grid gap-4 lg:grid-cols-[1.35fr_.85fr]">
         <section className="panel p-4 sm:p-5">
           <div className="mb-5 flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-ink">Position concentration</h3>
+            <h2 className="text-sm font-semibold text-ink">Position concentration</h2>
             <span className="eyebrow">Share of portfolio value</span>
           </div>
           <div className="space-y-1">
@@ -226,7 +227,7 @@ function RiskView({ stocks, quantities, totalValue, cash, onInspect }: Omit<Prim
         </section>
 
         <section className="panel p-4 sm:p-5">
-          <h3 className="text-sm font-semibold text-ink">Risk check</h3>
+          <h2 className="text-sm font-semibold text-ink">Risk check</h2>
           <div className="relative mx-auto my-6 h-36 w-36">
             <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" aria-hidden="true">
               <circle cx="60" cy="60" r="52" fill="none" strokeWidth="8" className="stroke-raised" />
@@ -251,9 +252,12 @@ function RiskView({ stocks, quantities, totalValue, cash, onInspect }: Omit<Prim
   );
 }
 
+const INSIGHTS_SECTIONS = ['signals', 'risk'] as const;
+const INSIGHTS_PANEL_ID = 'insights-tabpanel';
+
 /** Insights: the old Markets and Screeners views (Signals) and Analytics (Risk) under one roof. */
 function InsightsView({ stocks, loading, quantities, totalValue, cash, onInspect }: Omit<PrimaryWorkspaceProps, 'view'>) {
-  const [section, setSection] = useState<'signals' | 'risk'>('signals');
+  const [section, setSection] = useState<(typeof INSIGHTS_SECTIONS)[number]>('signals');
 
   return (
     <>
@@ -264,28 +268,35 @@ function InsightsView({ stocks, loading, quantities, totalValue, cash, onInspect
           ? 'Breadth, leadership and technical signals across the symbols in this portfolio. Search, filter and rank them, then inspect one.'
           : 'A decision layer focused on concentration and volatility, not another holdings table.'}
       >
-        <div className="flex shrink-0 self-start rounded-full border border-line p-1 sm:self-auto" role="group" aria-label="Insights section">
-          <button type="button" className="seg" aria-pressed={section === 'signals'} onClick={() => setSection('signals')}>Signals</button>
-          <button type="button" className="seg" aria-pressed={section === 'risk'} onClick={() => setSection('risk')}>Risk</button>
+        <div
+          className="flex shrink-0 self-start rounded-full border border-line p-1 sm:self-auto"
+          role="tablist"
+          aria-label="Insights section"
+          onKeyDown={event => handleTabListKeyDown(event, INSIGHTS_SECTIONS, section, setSection)}
+        >
+          <button {...tabProps('insights', 'signals', section === 'signals', INSIGHTS_PANEL_ID)} className="seg" onClick={() => setSection('signals')}>Signals</button>
+          <button {...tabProps('insights', 'risk', section === 'risk', INSIGHTS_PANEL_ID)} className="seg" onClick={() => setSection('risk')}>Risk</button>
         </div>
       </ViewHeading>
 
-      {loading ? (
-        <div className="grid gap-3 sm:grid-cols-3" aria-busy="true" aria-label="Loading insights">
-          {[0, 1, 2].map(index => <div key={index} className="skeleton h-24" />)}
-          <div className="skeleton h-72 sm:col-span-3" />
-        </div>
-      ) : stocks.length === 0 ? (
-        <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
-          <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Search className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
-          <h3 className="text-base font-semibold text-ink">Nothing to analyse yet</h3>
-          <p className="max-w-md text-sm leading-6 text-ink-muted">This portfolio has no symbols. Add one on the Portfolio tab and its signals, movers and risk appear here.</p>
-        </div>
-      ) : section === 'signals' ? (
-        <SignalsView stocks={stocks} onInspect={onInspect} />
-      ) : (
-        <RiskView stocks={stocks} quantities={quantities} totalValue={totalValue} cash={cash} onInspect={onInspect} />
-      )}
+      <div id={INSIGHTS_PANEL_ID} role="tabpanel" aria-labelledby={`insights-tab-${section}`}>
+        {loading ? (
+          <div className="grid gap-3 sm:grid-cols-3" aria-busy="true" aria-label="Loading insights">
+            {[0, 1, 2].map(index => <div key={index} className="skeleton h-24" />)}
+            <div className="skeleton h-72 sm:col-span-3" />
+          </div>
+        ) : stocks.length === 0 ? (
+          <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
+            <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Search className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
+            <h2 className="text-base font-semibold text-ink">Nothing to analyse yet</h2>
+            <p className="max-w-md text-sm leading-6 text-ink-muted">This portfolio has no symbols. Add one on the Portfolio tab and its signals, movers and risk appear here.</p>
+          </div>
+        ) : section === 'signals' ? (
+          <SignalsView stocks={stocks} onInspect={onInspect} />
+        ) : (
+          <RiskView stocks={stocks} quantities={quantities} totalValue={totalValue} cash={cash} onInspect={onInspect} />
+        )}
+      </div>
     </>
   );
 }
@@ -316,7 +327,7 @@ function NewsView() {
       ) : error || items.length === 0 ? (
         <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
           <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Newspaper className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
-          <h3 className="text-base font-semibold text-ink">Market news needs a live data key</h3>
+          <h2 className="text-base font-semibold text-ink">Market news needs a live data key</h2>
           <p className="max-w-lg text-sm leading-6 text-ink-muted">Add a Finnhub API key to <code className="rounded-[5px] bg-raised px-1.5 py-0.5 font-mono text-xs text-ink">VITE_FINNHUB_API_KEY</code> to populate this desk. Stock research and demo analytics continue to work without it.</p>
         </div>
       ) : (
@@ -329,7 +340,7 @@ function NewsView() {
                   <span className="truncate">{item.source || 'Market news'}</span>
                   <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 </div>
-                <h3 className={`${index === 0 ? 'text-xl' : 'text-base'} font-semibold leading-snug tracking-[-0.015em] text-ink`}>{item.headline}</h3>
+                <h2 className={`${index === 0 ? 'text-xl' : 'text-base'} font-semibold leading-snug tracking-[-0.015em] text-ink`}>{item.headline}</h2>
                 {item.summary && <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink-muted">{item.summary}</p>}
                 <time className="num mt-4 block text-xs text-ink-dim">{new Date(item.datetime * 1000).toLocaleString()}</time>
               </div>

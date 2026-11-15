@@ -61,7 +61,7 @@ export default function AppHeader({
       <div className="relative mx-auto flex h-14 w-full max-w-[1600px] items-center gap-2 px-4 sm:px-6 md:h-16 md:gap-4 lg:px-8">
         <Logo />
 
-        <nav className="ml-2 hidden items-center md:flex lg:ml-4" aria-label="Primary navigation">
+        <nav className="ml-2 hidden items-center md:flex lg:ml-4" aria-label="Primary">
           {NAV_ITEMS.map(({ view, label }) => (
             <button
               key={view}

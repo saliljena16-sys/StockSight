@@ -8,6 +8,7 @@ import { isSearchShortcut, resolveSymbolSearch } from '../src/utils/symbolSearch
 import { filterStocksBySector, getAvailableSectors, shouldResetSectorFilter } from '../src/utils/sectorFilter.ts';
 import { buildCompanyNewsUrl, toCompanyNewsItems } from '../src/utils/news.ts';
 import { authRedirectUrl, describeAuthError } from '../src/utils/auth.ts';
+import { nextTabIndex } from '../src/utils/tabs.ts';
 
 type Point = { date: string; open: number; high: number; low: number; close: number; volume: number };
 const point = (date: string, close: number): Point => ({ date, open: close, high: close, low: close, close, volume: 1 });
@@ -185,4 +186,16 @@ test('Summary row Total P/L uses the average cost and the live price', () => {
   const summary = calculatePortfolioSummary([s, t] as never, { AAA: 2, BBB: 4 }, { AAA: 90, BBB: 60 }, 0);
   const rows = calculateSummaryRow(s as never, 2, 90).totalPnL + calculateSummaryRow(t as never, 4, 60).totalPnL;
   assert.equal(rows, summary.totalGain);
+});
+
+test('tablist keys: Left/Right step and wrap, Home/End jump, other keys are ignored', () => {
+  assert.equal(nextTabIndex('ArrowRight', 0, 5), 1);
+  assert.equal(nextTabIndex('ArrowRight', 4, 5), 0);
+  assert.equal(nextTabIndex('ArrowLeft', 0, 5), 4);
+  assert.equal(nextTabIndex('ArrowLeft', 3, 5), 2);
+  assert.equal(nextTabIndex('Home', 3, 5), 0);
+  assert.equal(nextTabIndex('End', 1, 5), 4);
+  assert.equal(nextTabIndex('ArrowDown', 1, 5), null);
+  assert.equal(nextTabIndex('Enter', 1, 5), null);
+  assert.equal(nextTabIndex('ArrowRight', 0, 0), null);
 });

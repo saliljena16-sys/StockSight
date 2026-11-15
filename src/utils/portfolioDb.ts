@@ -1,4 +1,4 @@
-import { hasSupabaseConfig, supabase } from './supabase';
+import { getSupabase, hasSupabaseConfig } from './supabase';
 import type { Transaction } from '../types/portfolio';
 import { createGuestPortfolioState, normalizePortfolioState } from './portfolioState';
 
@@ -65,8 +65,10 @@ async function saveLocal(state: PortfolioState, userId?: string | null): Promise
 
 export async function loadPortfolioState(userId?: string | null): Promise<PortfolioState> {
   // Anonymous portfolios never leave the device.
-  if (userId && hasSupabaseConfig && supabase) {
+  if (userId && hasSupabaseConfig) {
     try {
+      const supabase = await getSupabase();
+      if (!supabase) throw new Error('Supabase client unavailable');
       const { data, error } = await supabase.from('portfolio_state').select('data').eq('id', `user-${userId}`).maybeSingle();
       if (!error && data?.data) return normalizePortfolioState(data.data);
       if (error) console.warn('Cloud portfolio fetch failed; using local state.', error);
@@ -79,8 +81,10 @@ export async function loadPortfolioState(userId?: string | null): Promise<Portfo
 
 export async function savePortfolioState(state: PortfolioState, userId?: string | null): Promise<void> {
   await saveLocal(state, userId);
-  if (!userId || !hasSupabaseConfig || !supabase) return;
+  if (!userId || !hasSupabaseConfig) return;
   try {
+    const supabase = await getSupabase();
+    if (!supabase) return;
     const { error } = await supabase.from('portfolio_state').upsert({ id: `user-${userId}`, data: state }, { onConflict: 'id' });
     if (error) console.warn('Cloud portfolio save failed; state remains saved locally.', error);
   } catch (error) {

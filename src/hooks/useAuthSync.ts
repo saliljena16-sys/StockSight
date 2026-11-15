@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AuthResult } from '../components/AuthModal';
-import { supabase } from '../utils/supabase';
+import { getSupabase, hasSupabaseConfig } from '../utils/supabase';
 import { createGuestPortfolioState, loadPortfolioState, savePortfolioState, type PortfolioState } from '../utils/portfolioDb';
 import { authRedirectUrl, describeAuthError } from '../utils/auth';
 import { toPortfolioState } from '../utils/portfolioState';
@@ -11,6 +12,20 @@ import type {
   PortfolioTickers,
   PortfolioTransactions,
 } from '../types/portfolio';
+
+/**
+ * The Supabase client, or null when cloud sync isn't configured or its code couldn't be fetched.
+ * Either way the app carries on as a guest on this device, with nothing read from or written to
+ * the cloud.
+ */
+function loadClient(): Promise<SupabaseClient | null> {
+  return getSupabase().catch(error => {
+    console.warn('Cloud sync could not be loaded; using this device only.', error);
+    return null;
+  });
+}
+
+const LOAD_FAILED = 'Cloud sync could not be loaded. Check your connection and reload the page.';
 
 interface AuthSyncOptions {
   portfolios: PortfolioTickers;
@@ -35,8 +50,9 @@ export function useAuthSync({ portfolios, quantities, averageCosts, cash, transa
 
   useEffect(() => {
     let isMounted = true;
+    let unsubscribe = () => {};
 
-    const hydrateSession = async () => {
+    const hydrateSession = async (supabase: SupabaseClient | null) => {
       const currentUser = supabase ? (await supabase.auth.getSession()).data.session?.user ?? null : null;
       const nextUserId = currentUser?.id ?? null;
       const saved = await loadPortfolioState(nextUserId);
@@ -52,20 +68,23 @@ export function useAuthSync({ portfolios, quantities, averageCosts, cash, transa
       setIsHydrated(true);
     };
 
-    hydrateSession();
-
-    const { data: authListener } = supabase
-      ? supabase.auth.onAuthStateChange((_event, session) => {
-          const currentUser = session?.user ?? null;
-          setUserId(currentUser?.id ?? null);
-          setUserEmail(currentUser?.email ?? null);
-          void hydrateSession();
-        })
-      : { data: { subscription: { unsubscribe: () => undefined } } };
+    // Same order as before the client was loaded on demand: hydrate, then listen for changes.
+    void loadClient().then(supabase => {
+      if (!isMounted) return;
+      void hydrateSession(supabase);
+      if (!supabase) return;
+      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        const currentUser = session?.user ?? null;
+        setUserId(currentUser?.id ?? null);
+        setUserEmail(currentUser?.email ?? null);
+        void hydrateSession(supabase);
+      });
+      unsubscribe = () => authListener.subscription.unsubscribe();
+    });
 
     return () => {
       isMounted = false;
-      authListener.subscription.unsubscribe();
+      unsubscribe();
     };
   }, []);
 
@@ -75,8 +94,9 @@ export function useAuthSync({ portfolios, quantities, averageCosts, cash, transa
   }, [portfolios, quantities, averageCosts, cash, transactions, isHydrated, userId]);
 
   const signIn = async (mode: 'signin' | 'signup', email: string, password: string): Promise<AuthResult> => {
+    const supabase = await loadClient();
     if (!supabase) {
-      return { error: 'Cloud sync is not configured for this deployment.' };
+      return { error: hasSupabaseConfig ? LOAD_FAILED : 'Cloud sync is not configured for this deployment.' };
     }
     const { data, error } = mode === 'signin'
       ? await supabase.auth.signInWithPassword({ email, password })
@@ -94,12 +114,14 @@ export function useAuthSync({ portfolios, quantities, averageCosts, cash, transa
   };
 
   const resendConfirmation = async (email: string): Promise<string | null> => {
-    if (!supabase) return 'Cloud sync is not configured.';
+    const supabase = await loadClient();
+    if (!supabase) return hasSupabaseConfig ? LOAD_FAILED : 'Cloud sync is not configured.';
     const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: authRedirectUrl(window.location.origin) } });
     return error?.message ?? null;
   };
 
   const signOut = async () => {
+    const supabase = await loadClient();
     if (!supabase) return;
     await supabase.auth.signOut();
     const guestState = createGuestPortfolioState();

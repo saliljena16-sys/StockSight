@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { focusAndSelectAll } from '../../utils/focus';
 import { checkPortfolioName } from '../../utils/portfolioNames';
 import Modal from '../ui/Modal';
 
@@ -22,6 +23,13 @@ export default function PortfolioNameDialog({ currentName, existingNames, defaul
   const [value, setValue] = useState(defaultValue);
   const [error, setError] = useState<string | null>(null);
   const renaming = currentName !== undefined;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus and select the prefilled name once, on open (see focusAndSelectAll for why this isn't
+  // autoFocus plus an onFocus select()).
+  useLayoutEffect(() => {
+    if (inputRef.current) focusAndSelectAll(inputRef.current);
+  }, []);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -42,11 +50,10 @@ export default function PortfolioNameDialog({ currentName, existingNames, defaul
           <label className="eyebrow block">
             Portfolio name
             <input
+              ref={inputRef}
               type="text"
               value={value}
               onChange={event => { setValue(event.target.value); setError(null); }}
-              onFocus={event => event.target.select()}
-              autoFocus
               autoComplete="off"
               aria-invalid={error ? true : undefined}
               aria-describedby={error ? 'portfolio-name-error' : undefined}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { checkPortfolioName, deletePortfolioMessage, findPortfolioNameConflict, portfolioNameError, suggestPortfolioName } from '../src/utils/portfolioNames.ts';
+import { focusAndSelectAll } from '../src/utils/focus.ts';
 
 const names = ['Core', 'Second'];
 
@@ -47,4 +48,37 @@ test('renaming refuses another portfolio\'s name and treats the unchanged name a
 
 test('the delete confirmation names the portfolio and what is lost with it', () => {
   assert.equal(deletePortfolioMessage('Core'), '"Core" and its stocks, shares, cash and transactions will be deleted. This can\'t be undone.');
+});
+
+/**
+ * A text field in a document that doesn't have focus (DevTools or another window in front, a
+ * background or headless tab): focus() moves focus but fires no focus event, and the caret starts
+ * at the end, where setting the value put it.
+ */
+function fieldInUnfocusedDocument(value: string) {
+  const focusListeners: Array<() => void> = [];
+  return {
+    value,
+    focused: false,
+    selectionStart: value.length,
+    selectionEnd: value.length,
+    onFocus(listener: () => void) { focusListeners.push(listener); },
+    focus() { this.focused = true; }, // no focus event is dispatched
+    select() { this.setSelectionRange(0, this.value.length); },
+    setSelectionRange(start: number, end: number) { this.selectionStart = start; this.selectionEnd = end; },
+  };
+}
+
+test('the name dialog field is focused with the whole prefilled name selected, even without a focus event', () => {
+  // What the dialog used to do: autoFocus, then select() from the focus event, which never comes.
+  const before = fieldInUnfocusedDocument('Popular Picks');
+  before.onFocus(() => before.select());
+  before.focus();
+  assert.deepEqual([before.focused, before.selectionStart, before.selectionEnd], [true, 13, 13], 'caret left at the end');
+
+  for (const name of ['Popular Picks', 'Portfolio 2']) { // rename (current name) and create (suggestion)
+    const field = fieldInUnfocusedDocument(name);
+    focusAndSelectAll(field);
+    assert.deepEqual([field.focused, field.selectionStart, field.selectionEnd], [true, 0, name.length], `${name}: all selected`);
+  }
 });

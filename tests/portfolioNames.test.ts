@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { askForPortfolioName, findPortfolioNameConflict, portfolioNameError, suggestPortfolioName } from '../src/utils/portfolioNames.ts';
+import { checkPortfolioName, deletePortfolioMessage, findPortfolioNameConflict, portfolioNameError, suggestPortfolioName } from '../src/utils/portfolioNames.ts';
 
 const names = ['Core', 'Second'];
 
@@ -22,37 +22,29 @@ test('the suggested name skips names that are taken', () => {
   assert.equal(suggestPortfolioName(['Core', 'portfolio 3']), 'Portfolio 4');
 });
 
-function scriptedAsk(answers: Array<string | null>) {
-  const asked: Array<[string, string]> = [];
-  return {
-    asked,
-    ask: (message: string, defaultValue: string) => {
-      asked.push([message, defaultValue]);
-      return answers.length ? answers.shift()! : null;
-    },
-  };
-}
+const CLASH_SECOND = 'A portfolio named "Second" already exists. Choose a different name.';
 
-test('creating with a taken name re-prompts with the reason instead of accepting it', () => {
-  const { ask, asked } = scriptedAsk(['Second', ' Growth ']);
-  const name = askForPortfolioName({ ask, message: 'Create a portfolio name', defaultValue: 'Portfolio 3', existingNames: names });
-  assert.equal(name, 'Growth');
-  assert.deepEqual(asked, [
-    ['Create a portfolio name', 'Portfolio 3'],
-    ['A portfolio named "Second" already exists. Choose a different name.', 'Second'],
-  ]);
+test('creating accepts a free, trimmed name and refuses a taken one with the reason', () => {
+  assert.deepEqual(checkPortfolioName(' Growth ', names), { status: 'ok', name: 'Growth' });
+  assert.deepEqual(checkPortfolioName('Second', names), { status: 'clash', message: CLASH_SECOND });
+  assert.deepEqual(checkPortfolioName('  sECOND ', names), { status: 'clash', message: CLASH_SECOND });
+  // The suggested default is always accepted as-is.
+  assert.deepEqual(checkPortfolioName(suggestPortfolioName(names), names), { status: 'ok', name: 'Portfolio 3' });
 });
 
-test('cancelling after a clash returns nothing', () => {
-  const { ask } = scriptedAsk(['second', null]);
-  assert.equal(askForPortfolioName({ ask, message: 'Create a portfolio name', defaultValue: 'x', existingNames: names }), null);
-  assert.equal(askForPortfolioName({ ask: scriptedAsk(['   ']).ask, message: 'm', defaultValue: 'x', existingNames: names }), null);
+test('a blank name is never saved', () => {
+  assert.deepEqual(checkPortfolioName('', names), { status: 'empty' });
+  assert.deepEqual(checkPortfolioName('   ', names), { status: 'empty' });
+  assert.deepEqual(checkPortfolioName('   ', names, 'Core'), { status: 'empty' });
 });
 
-test('renaming re-prompts on a clash and treats the unchanged name as no change', () => {
-  const clash = scriptedAsk(['Second', 'Core Growth']);
-  assert.equal(askForPortfolioName({ ask: clash.ask, message: 'Rename portfolio', defaultValue: 'Core', existingNames: names, currentName: 'Core' }), 'Core Growth');
-  assert.equal(clash.asked[1][0], 'A portfolio named "Second" already exists. Choose a different name.');
-  assert.equal(askForPortfolioName({ ask: scriptedAsk(['Core']).ask, message: 'Rename portfolio', defaultValue: 'Core', existingNames: names, currentName: 'Core' }), null);
-  assert.equal(askForPortfolioName({ ask: scriptedAsk(['core']).ask, message: 'Rename portfolio', defaultValue: 'Core', existingNames: names, currentName: 'Core' }), 'core');
+test('renaming refuses another portfolio\'s name and treats the unchanged name as no change', () => {
+  assert.deepEqual(checkPortfolioName('Second', names, 'Core'), { status: 'clash', message: CLASH_SECOND });
+  assert.deepEqual(checkPortfolioName('Core Growth', names, 'Core'), { status: 'ok', name: 'Core Growth' });
+  assert.deepEqual(checkPortfolioName(' Core ', names, 'Core'), { status: 'unchanged' });
+  assert.deepEqual(checkPortfolioName('core', names, 'Core'), { status: 'ok', name: 'core' });
+});
+
+test('the delete confirmation names the portfolio and what is lost with it', () => {
+  assert.equal(deletePortfolioMessage('Core'), '"Core" and its stocks, shares, cash and transactions will be deleted. This can\'t be undone.');
 });

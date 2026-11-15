@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Check, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react';
-import { askForPortfolioName, suggestPortfolioName } from '../../utils/portfolioNames';
+import { deletePortfolioMessage, suggestPortfolioName } from '../../utils/portfolioNames';
+import ConfirmDialog from '../ui/ConfirmDialog';
+import PortfolioNameDialog from './PortfolioNameDialog';
+
+type PortfolioDialog = 'create' | 'rename' | 'delete' | null;
 
 interface PortfolioMenuProps {
   portfolioNames: string[];
   activePortfolio: string;
   onSelectPortfolio: (name: string) => void;
-  /** Returns false if the name was rejected (it never is after the prompt's own check). */
+  /** Returns false if the name was rejected (it never is after the dialog's own check). */
   onCreate: (name: string) => boolean;
   onRename: (from: string, to: string) => boolean;
   onDelete: (name: string) => void;
@@ -15,11 +19,12 @@ interface PortfolioMenuProps {
 const ITEM = 'flex min-h-11 w-full items-center gap-3 rounded-control px-2.5 text-left text-sm text-ink hover:bg-canvas/70 focus-visible:bg-canvas/70 disabled:opacity-40 lg:min-h-9';
 
 /**
- * The active portfolio's name as a menu button: switch portfolio, or rename, create or delete one.
- * Arrow keys move between items, Escape closes and returns focus to the button.
+ * The active portfolio's name as a menu button: switch portfolio, or rename, create or delete one
+ * (each in a dialog). Arrow keys move between items, Escape closes and returns focus to the button.
  */
 export default function PortfolioMenu({ portfolioNames, activePortfolio, onSelectPortfolio, onCreate, onRename, onDelete }: PortfolioMenuProps) {
   const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState<PortfolioDialog>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,42 +70,15 @@ export default function PortfolioMenu({ portfolioNames, activePortfolio, onSelec
     }
   };
 
-  // Names that clash with another portfolio are refused with an explanation and the prompt is
-  // shown again, so creating or renaming can never overwrite another portfolio's data.
-  const handleCreatePortfolio = () => {
+  // Each action closes the menu and focuses its button first, so the dialog it opens returns
+  // focus there when it closes.
+  const openDialog = (next: Exclude<PortfolioDialog, null>) => {
     close();
-    const name = askForPortfolioName({
-      ask: (message, defaultValue) => window.prompt(message, defaultValue),
-      message: 'Create a portfolio name',
-      defaultValue: suggestPortfolioName(portfolioNames),
-      existingNames: portfolioNames,
-    });
-    if (name) onCreate(name);
+    // The last portfolio can't be deleted (its menu item is disabled too).
+    if (next === 'delete' && portfolioNames.length <= 1) return;
+    setDialog(next);
   };
-
-  const handleRenamePortfolio = () => {
-    close();
-    const name = askForPortfolioName({
-      ask: (message, defaultValue) => window.prompt(message, defaultValue),
-      message: 'Rename portfolio',
-      defaultValue: activePortfolio,
-      existingNames: portfolioNames,
-      currentName: activePortfolio,
-    });
-    if (name) onRename(activePortfolio, name);
-  };
-
-  const handleDeletePortfolio = () => {
-    close();
-    if (portfolioNames.length <= 1) {
-      window.alert('You must keep at least one portfolio.');
-      return;
-    }
-
-    const confirmed = window.confirm(`Delete the portfolio "${activePortfolio}"?`);
-    if (!confirmed) return;
-    onDelete(activePortfolio);
-  };
+  const closeDialog = () => setDialog(null);
 
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1">
@@ -140,16 +118,44 @@ export default function PortfolioMenu({ portfolioNames, activePortfolio, onSelec
             </button>
           ))}
           <div className="my-1.5 border-t border-line" role="separator" />
-          <button type="button" role="menuitem" onClick={handleRenamePortfolio} className={ITEM}>
+          <button type="button" role="menuitem" onClick={() => openDialog('rename')} className={ITEM}>
             <Pencil className="h-4 w-4 shrink-0 text-ink-dim" aria-hidden="true" />Rename this portfolio
           </button>
-          <button type="button" role="menuitem" onClick={handleCreatePortfolio} className={ITEM}>
+          <button type="button" role="menuitem" onClick={() => openDialog('create')} className={ITEM}>
             <Plus className="h-4 w-4 shrink-0 text-ink-dim" aria-hidden="true" />New portfolio
           </button>
-          <button type="button" role="menuitem" onClick={handleDeletePortfolio} disabled={portfolioNames.length <= 1} className={`${ITEM} text-loss`}>
+          <button type="button" role="menuitem" onClick={() => openDialog('delete')} disabled={portfolioNames.length <= 1} className={`${ITEM} text-loss`}>
             <Trash2 className="h-4 w-4 shrink-0" aria-hidden="true" />Delete this portfolio
           </button>
         </div>
+      )}
+
+      {dialog === 'create' && (
+        <PortfolioNameDialog
+          existingNames={portfolioNames}
+          defaultValue={suggestPortfolioName(portfolioNames)}
+          onSave={onCreate}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === 'rename' && (
+        <PortfolioNameDialog
+          currentName={activePortfolio}
+          existingNames={portfolioNames}
+          defaultValue={activePortfolio}
+          onSave={name => onRename(activePortfolio, name)}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === 'delete' && (
+        <ConfirmDialog
+          titleId="delete-portfolio-title"
+          title="Delete portfolio?"
+          message={deletePortfolioMessage(activePortfolio)}
+          confirmLabel="Delete portfolio"
+          onConfirm={() => onDelete(activePortfolio)}
+          onClose={closeDialog}
+        />
       )}
     </div>
   );

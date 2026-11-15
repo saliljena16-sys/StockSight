@@ -91,3 +91,32 @@ test('a watched stock with no shares shows 0 shares and an Add button in Holding
   const cccRow = html.slice(html.indexOf('>CCC<'));
   assert.match(cccRow, /<button[^>]*>Add<\/button><span[^>]*>0<\/span>/);
 });
+
+test('the new-portfolio dialog is a labelled dialog prefilled with a free suggested name', async () => {
+  const html = await render('/src/components/portfolio/PortfolioNameDialog.tsx', {
+    existingNames: ['Core', 'Portfolio 3'], defaultValue: 'Portfolio 4', onSave: () => true, onClose: noop,
+  });
+  assert.match(html, /role="dialog"[^>]*aria-labelledby="portfolio-name-title"/);
+  assert.match(html, /<h2 id="portfolio-name-title"[^>]*>New portfolio<\/h2>/);
+  assert.match(html, /<input[^>]*value="Portfolio 4"/);
+  assert.match(html, /<button type="submit"[^>]*>Create portfolio<\/button>/);
+  assert.ok(!html.includes('role="alert"'), 'no error before submitting');
+});
+
+test('the rename dialog is prefilled with the current name', async () => {
+  const html = await render('/src/components/portfolio/PortfolioNameDialog.tsx', {
+    currentName: 'Core', existingNames: ['Core'], defaultValue: 'Core', onSave: () => true, onClose: noop,
+  });
+  assert.match(html, />Rename portfolio<\/h2>/);
+  assert.match(html, /<input[^>]*value="Core"/);
+  assert.match(html, /<button type="submit"[^>]*>Rename<\/button>/);
+});
+
+test('the confirm dialog shows the message and a destructive confirm button beside Cancel', async () => {
+  const html = await render('/src/components/ui/ConfirmDialog.tsx', {
+    titleId: 't', title: 'Delete portfolio?', message: '"Core" will be deleted.', confirmLabel: 'Delete portfolio', onConfirm: noop, onClose: noop,
+  });
+  assert.match(html, /role="dialog"[^>]*aria-labelledby="t"/);
+  assert.ok(html.includes('&quot;Core&quot; will be deleted.'));
+  assert.match(html, /<button type="button"[^>]*>Cancel<\/button><button type="submit"[^>]*class="btn btn-danger"[^>]*>Delete portfolio<\/button>/);
+});

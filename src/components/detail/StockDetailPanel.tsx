@@ -7,6 +7,7 @@ import { getForecastInputs } from '../../utils/forecast';
 import { getHoldingMetrics } from '../../utils/portfolioMetrics';
 import { getCompanyMetadata } from '../../utils/companyMetadata';
 import { formatCurrency, formatShares, formatSignedCurrency, formatSignedPercent } from '../../utils/format';
+import { handleTabListKeyDown, tabProps } from '../../utils/tabs';
 import type { NewsItem } from '../../types/news';
 import type { DetailTab } from '../../types/views';
 import AnalysisPanel from '../AnalysisPanel';
@@ -46,6 +47,8 @@ const TABS: Array<{ value: DetailTab; label: string; Icon: LucideIcon }> = [
   { value: 'compare', label: 'Compare', Icon: Layers3 },
   { value: 'news', label: 'News', Icon: Newspaper },
 ];
+const TAB_VALUES = TABS.map(tab => tab.value);
+const PANEL_ID = 'detail-tabpanel';
 
 /**
  * The selected stock, alongside the holdings list: quote, your position with one-click edit, and
@@ -152,16 +155,21 @@ export default function StockDetailPanel({
         </div>
       </div>
 
-      <div className="mobile-scroll mt-2 flex items-center gap-3 overflow-x-auto border-b border-line sm:gap-6 lg:mt-1" role="group" aria-label={`${ticker} views`}>
+      <div
+        className="mobile-scroll mt-2 flex items-center gap-3 overflow-x-auto border-b border-line sm:gap-6 lg:mt-1"
+        role="tablist"
+        aria-label={`${ticker} views`}
+        onKeyDown={event => handleTabListKeyDown(event, TAB_VALUES, activeTab, onTabChange)}
+      >
         {TABS.map(({ value, label, Icon }) => (
-          <button key={value} type="button" onClick={() => onTabChange(value)} aria-pressed={activeTab === value} className="tab">
+          <button key={value} {...tabProps('detail', value, activeTab === value, PANEL_ID)} onClick={() => onTabChange(value)} className="tab">
             <Icon className="hidden h-4 w-4 sm:block" aria-hidden="true" />
             {label}
           </button>
         ))}
       </div>
 
-      <div className="mt-3 lg:mt-4">
+      <div id={PANEL_ID} role="tabpanel" aria-labelledby={`detail-tab-${activeTab}`} className="mt-3 lg:mt-4">
         {activeTab === 'chart' && (
           <LazyPanel resetKey={ticker}>
             <CandlestickChart

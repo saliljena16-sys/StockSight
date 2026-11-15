@@ -82,7 +82,7 @@ export default function PortfolioHero({
 
   return (
     <section aria-labelledby="portfolio-heading" className={`pb-4 pt-3 sm:pt-5 lg:pt-8 ${showPrompt && !isEmpty ? 'lg:pb-6' : 'lg:pb-7'}`}>
-      <h2 id="portfolio-heading" className="sr-only">Portfolio summary</h2>
+      <h1 id="portfolio-heading" className="sr-only">Portfolio summary</h1>
 
       <div className="flex items-center justify-between gap-3">
         <PortfolioMenu

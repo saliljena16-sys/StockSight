@@ -354,7 +354,7 @@ input[type="number"] { -moz-appearance: textfield; }
     background: var(--color-accent);
   }
 
-  /* Segmented control (chart ranges, sub-views). */
+  /* Segmented control (chart ranges; also the tabs for sub-views). */
   .seg {
     display: inline-flex;
     flex-shrink: 0;
@@ -372,7 +372,7 @@ input[type="number"] { -moz-appearance: textfield; }
     letter-spacing: 0.04em;
   }
   .seg:hover { color: var(--color-ink); }
-  .seg[aria-pressed="true"] { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink); }
+  .seg[aria-pressed="true"], .seg[aria-selected="true"] { border-color: var(--color-line-strong); background: var(--color-raised); color: var(--color-ink); }
 
   @media (min-width: 64rem) {
     .nav-link { height: 2.5rem; }

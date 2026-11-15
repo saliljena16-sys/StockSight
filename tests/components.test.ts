@@ -3,7 +3,7 @@
 // lifecycle behaviour such as the chart not being rebuilt is covered elsewhere.)
 import test, { after, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { createElement, type ComponentType } from 'react';
+import { createElement, createRef, type ComponentType } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer, type ViteDevServer } from 'vite';
 import { calculatePortfolioSummary, calculateSectorAllocation } from '../src/utils/portfolioMetrics.ts';
@@ -119,4 +119,36 @@ test('the confirm dialog shows the message and a destructive confirm button besi
   assert.match(html, /role="dialog"[^>]*aria-labelledby="t"/);
   assert.ok(html.includes('&quot;Core&quot; will be deleted.'));
   assert.match(html, /<button type="button"[^>]*>Cancel<\/button><button type="submit"[^>]*class="btn btn-danger"[^>]*>Delete portfolio<\/button>/);
+});
+
+test('the table tabs are a tablist: one selected tab in the Tab order, controlling a panel it labels', async () => {
+  const html = await render('/src/components/watchlist/WatchlistTable.tsx', tableProps('holdings'));
+  assert.match(html, /role="tablist" aria-label="Portfolio tables"/);
+  const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*>/g)].map(match => match[0]);
+  assert.equal(tabs.length, 4);
+  for (const tab of tabs) {
+    const selected = tab.includes('id="table-tab-holdings"');
+    assert.ok(tab.includes(`aria-selected="${selected}"`), tab);
+    assert.ok(tab.includes(`tabindex="${selected ? 0 : -1}"`), tab);
+    assert.ok(tab.includes('aria-controls="table-tabpanel"'), tab);
+    assert.ok(!tab.includes('aria-pressed'), tab);
+  }
+  assert.match(html, /id="table-tabpanel" role="tabpanel" aria-labelledby="table-tab-holdings"/);
+});
+
+test('the wordmark is not a heading, and the two navs have different labels', async () => {
+  const logo = await render('/src/components/ui/Logo.tsx', {});
+  assert.ok(logo.includes('StockSight') && !/<h[1-6]/.test(logo), logo);
+
+  const tabBar = await render('/src/components/layout/MobileTabBar.tsx', { primaryView: 'portfolio', onNavigate: noop });
+  const tabBarLabel = tabBar.match(/<nav aria-label="([^"]+)"/)?.[1];
+  const header = await render('/src/components/layout/AppHeader.tsx', {
+    primaryView: 'portfolio', onNavigate: noop, searchQuery: '', onSearchChange: noop, onSearchSubmit: noop,
+    searchInputRef: createRef(), hasQuotes: true, hasLiveData: true, allLiveData: true, isLoading: false,
+    lastUpdate: new Date('2026-11-13T15:00:00Z'), isRefreshing: false, onRefresh: noop, userEmail: null, onSignIn: noop, onSignOut: noop,
+  });
+  const headerLabel = header.match(/<nav[^>]*aria-label="([^"]+)"/)?.[1];
+  assert.ok(header.includes('StockSight') && !/<h[1-6]/.test(header), 'no heading in the header');
+  assert.ok(tabBarLabel && headerLabel);
+  assert.notEqual(tabBarLabel, headerLabel);
 });

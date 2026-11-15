@@ -17,9 +17,13 @@ if (-not (Test-Path "package.json")) {
 
 if (Test-Path ".env") {
     Write-Host ".env already exists - leaving it unchanged." -ForegroundColor Yellow
+    # The Finnhub key moved server-side and was renamed; the old name is no longer read.
+    if (Select-String -Path ".env" -Pattern "^\s*VITE_FINNHUB_API_KEY\s*=" -Quiet) {
+        Write-Host "Your .env still uses VITE_FINNHUB_API_KEY. Rename it to FINNHUB_API_KEY (same value) for live data." -ForegroundColor Red
+    }
 } else {
     Copy-Item ".env.example" ".env"
-    Write-Host "Created .env from .env.example. Add your Finnhub key (and Supabase keys for cloud sync)." -ForegroundColor Yellow
+    Write-Host "Created .env from .env.example. Set FINNHUB_API_KEY (server-only, no VITE_ prefix) and, for cloud sync, the Supabase keys." -ForegroundColor Yellow
 }
 
 Write-Host ""

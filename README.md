@@ -26,7 +26,9 @@ Other features:
 React + TypeScript UI
         │
         ├── SWR quote orchestration (60 s refresh)
-        │     ├── Finnhub ── /quote, /stock/profile2, /company-news, /news (called from the browser)
+        │     ├── /api/finnhub/{quote, stock/profile2, company-news, news}
+        │     │     ├── production and previews: vercel.json rewrite → api/finnhub.js → Finnhub (key added server-side)
+        │     │     └── local dev and `npm run preview`: the same handler, run as Vite middleware
         │     └── /api/yahoo-finance/v8/finance/chart/<TICKER>
         │           ├── production and previews: vercel.json rewrite → api/yahoo-finance.js → Yahoo Finance
         │           └── local dev and `npm run preview`: Vite proxy → Yahoo Finance
@@ -55,7 +57,11 @@ The heavier pieces load as separate chunks: the price chart (Lightweight Charts)
 - **When history is unavailable,** the quote is still shown. Charts show "Price history unavailable" with the reason, and technical signals show `UNAVAILABLE`.
 - **When the Finnhub quote fails** (missing or invalid key, rate limit), the app falls back to a deterministic demo series that is labelled as demo data everywhere. Demo rows report nothing in Key Stats.
 - **Not connected:** earnings estimates, P/E, dividends and price-to-book need a fundamentals feed that isn't wired in. Those Key Stats columns show "—".
-- **The Finnhub key is public.** `VITE_` variables are compiled into the browser bundle, and the key is sent in every Finnhub request URL, so anyone using the site can read `VITE_FINNHUB_API_KEY`. Use a free-tier key that is safe to expose.
+- **The Finnhub key stays on the server.** The browser calls `/api/finnhub/<endpoint>`, and `api/finnhub.js` adds `FINNHUB_API_KEY` as the `X-Finnhub-Token` header. The key is not in the bundle, in any browser request, or in the upstream URL, and the function never logs it or echoes Finnhub's error bodies.
+  - Only `quote`, `stock/profile2`, `company-news` and `news` are proxied, with validated parameters (`symbol`, `from`/`to` dates, news `category`). Anything else is a `400`, so the function can't be used as an open relay on the key.
+  - Successful answers are cached by Vercel's CDN: quotes for 15 s, profiles for a day, news for 5 minutes.
+  - With no key configured it answers `503 { "error": ..., "code": "FINNHUB_KEY_MISSING" }`, and the app shows its demo state, as it did without a key before. Upstream failures come back as `429`, `502` or `504` and are not cached.
+  - `npm run check:bundle` (after `npm run build`) fails if `dist/` contains the key value, a `finnhub.io` URL, a `token=` parameter or the token header.
 
 The app keeps guest data on-device. Cloud reads and writes are attempted only when a verified Supabase user ID is present, and the included SQL policies restrict every row to its owner.
 
@@ -89,11 +95,15 @@ npm run dev
 
 The app runs at `http://localhost:4000`. `setup.ps1` does the `.env` step on Windows. Add your keys to `.env` and never commit it.
 
+`npm run dev` serves `/api/finnhub` itself: `vite.config.js` runs the real `api/finnhub.js` handler as middleware and gives it `FINNHUB_API_KEY` from `.env` (or the shell environment), so local requests get the same allowlist, headers and no-key `503` as on Vercel. Restart the dev server after changing the key. `vercel dev` is not needed.
+
+Upgrading an older checkout: rename `VITE_FINNHUB_API_KEY` to `FINNHUB_API_KEY` in your `.env`. The old name is no longer read.
+
 ### Environment variables
 
 | Variable | Needed for | Without it |
 | --- | --- | --- |
-| `VITE_FINNHUB_API_KEY` | Live quotes, company profiles, company and market news. A free [Finnhub](https://finnhub.io/register) key is enough. | Demo prices everywhere, no company news, and the News view asks for a key. |
+| `FINNHUB_API_KEY` | Live quotes, company profiles, company and market news. A free [Finnhub](https://finnhub.io/register) key is enough. Server-only: no `VITE_` prefix, so it is never put in the bundle. | Demo prices everywhere, no company news, and the News view asks for a key. |
 | `VITE_SUPABASE_URL` | Sign-in and cloud sync | The app works as a guest only; portfolios stay in IndexedDB on the device. |
 | `VITE_SUPABASE_ANON_KEY` | Sign-in and cloud sync (the project's public anon key) | As above. |
 
@@ -103,24 +113,27 @@ Yahoo Finance needs no key. For cloud sync, run `supabase/portfolio_state.sql` i
 
 | Script | What it does |
 | --- | --- |
-| `npm run dev` (or `npm start`) | Vite dev server on port 4000, with the Yahoo proxy |
+| `npm run dev` (or `npm start`) | Vite dev server on port 4000, with the Yahoo and Finnhub proxies |
 | `npm run build` | Production build into `dist/` |
-| `npm run preview` | Serves `dist/` on port 4000, with the same Yahoo proxy |
+| `npm run check:bundle` | Scans `dist/` for the Finnhub key, `finnhub.io` URLs and token parameters; fails if any is found |
+| `npm run preview` | Serves `dist/` on port 4000, with the same Yahoo and Finnhub proxies |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm test` | Node's test runner over `tests/` (analytics, data handling, the Yahoo function, portfolio state, and components rendered to HTML) |
+| `npm test` | Node's test runner over `tests/` (analytics, data handling, the Yahoo and Finnhub functions, the Finnhub client's no-key handling, portfolio state, and components rendered to HTML) |
 
-Run `npm run typecheck`, `npm test` and `npm run build` before opening a pull request.
+Run `npm run typecheck`, `npm test`, `npm run build` and `npm run check:bundle` before opening a pull request.
 
 ## Deployment (Vercel)
 
 - **Production** deploys automatically from pushes to `master` and serves https://stocksight.salil.best.
-- **Previews:** every other pushed branch, and every pull request, gets its own preview deployment with a unique URL (shown on the pull request and in the Vercel dashboard). Previews build the same way and run the same `api/yahoo-finance.js` function. If the project has Vercel's deployment protection on, previews ask visitors to sign in to Vercel.
+- **Previews:** every other pushed branch, and every pull request, gets its own preview deployment with a unique URL (shown on the pull request and in the Vercel dashboard). Previews build the same way and run the same `api/yahoo-finance.js` and `api/finnhub.js` functions. If the project has Vercel's deployment protection on, previews ask visitors to sign in to Vercel.
 
-Set the three variables above in the Vercel project's environment variables, for **Production** and also for **Preview** (a preview built without them shows demo prices and has no sign-in). `VITE_` variables are read at build time, so redeploy after changing one.
+Set the three variables above in the Vercel project's environment variables, for **Production** and also for **Preview**. A preview without `FINNHUB_API_KEY` shows demo prices; one without the Supabase variables has no sign-in. `FINNHUB_API_KEY` is read by the function at run time and the `VITE_` variables at build time, but Vercel applies environment changes only to new deployments, so redeploy after changing any of them. Don't add a `VITE_FINNHUB_API_KEY`: nothing reads it, and a `VITE_` name is the wrong place for a secret.
 
 For email sign-up on a deployment, Supabase must allow its address as a redirect: set the Site URL to the production URL and add the preview URLs under Authentication → URL Configuration → Redirect URLs (a wildcard such as `https://*-<your-team>.vercel.app/**` covers all previews). The confirmation email links back to the origin the user signed up from.
 
-`vercel.json` rewrites `/api/yahoo-finance/:path*` to the `api/yahoo-finance.js` function. Vercel only routes catch-all filenames like `[...path].js` for Next.js projects, so keep the single-file function and the rewrite together. If charts go blank, open `/api/yahoo-finance/v8/finance/chart/AAPL?range=1mo&interval=1d` on the deployment. It should return JSON (chart data or an `{ "error": ... }` message), never Vercel's 404 page. Failures are logged in the function's runtime logs with a `[yahoo-finance]` prefix.
+`vercel.json` rewrites `/api/yahoo-finance/:path*` to the `api/yahoo-finance.js` function and `/api/finnhub/:path*` to `api/finnhub.js`. Vercel only routes catch-all filenames like `[...path].js` for Next.js projects, so keep each single-file function and its rewrite together. If charts go blank, open `/api/yahoo-finance/v8/finance/chart/AAPL?range=1mo&interval=1d` on the deployment. It should return JSON (chart data or an `{ "error": ... }` message), never Vercel's 404 page. Failures are logged in the function's runtime logs with a `[yahoo-finance]` prefix.
+
+If a deployment shows demo prices, open `/api/finnhub/quote?symbol=AAPL` on it. A `503` with `FINNHUB_KEY_MISSING` means `FINNHUB_API_KEY` isn't set for that environment (or the deployment predates it); a `502` saying Finnhub refused the key means the key is wrong. Those failures are logged with a `[finnhub]` prefix, without the key.
 
 ## Data transparency
 

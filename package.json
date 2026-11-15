@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview --port 4000 --strictPort",
     "typecheck": "tsc --noEmit",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "test": "node --experimental-strip-types --test tests/analytics.test.ts tests/yahooProxy.test.ts tests/finnhubProxy.test.ts tests/finnhubClient.test.ts tests/keyStats.test.ts tests/forecastAndErrors.test.ts tests/appUtils.test.ts tests/portfolioState.test.ts tests/portfolioNames.test.ts tests/components.test.ts tests/chartData.test.ts"
   },
   "dependencies": {

@@ -6,6 +6,7 @@ import { annualizedVolatility30d as volatility, dayChangePercent as changePercen
 import { formatSignedPercent } from '../utils/format';
 import { handleTabListKeyDown, tabProps } from '../utils/tabs';
 import type { NewsItem } from '../types/news';
+import { fetchFinnhub, isFinnhubKnownUnavailable } from '../utils/finnhub';
 import CompanyMark from './CompanyMark';
 import Delta from './ui/Delta';
 import SignalChip from './ui/SignalChip';
@@ -303,16 +304,16 @@ function InsightsView({ stocks, loading, quantities, totalValue, cash, onInspect
 
 function NewsView() {
   const [items, setItems] = useState<NewsItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  // When the proxy has already reported that no key is configured, show the empty state at once.
+  const [loading, setLoading] = useState(() => !isFinnhubKnownUnavailable());
+  const [error, setError] = useState(() => isFinnhubKnownUnavailable());
   useEffect(() => {
-    const token = import.meta.env.VITE_FINNHUB_API_KEY;
-    if (!token) { setLoading(false); setError(true); return; }
+    if (isFinnhubKnownUnavailable()) { setLoading(false); setError(true); return; }
     let active = true;
-    fetch(`https://finnhub.io/api/v1/news?category=general&token=${token}`).then(response => {
-      if (!response.ok) throw new Error(String(response.status));
-      return response.json();
-    }).then(data => { if (active) setItems(Array.isArray(data) ? data.slice(0, 12) : []); }).catch(() => { if (active) setError(true); }).finally(() => { if (active) setLoading(false); });
+    fetchFinnhub('news', { category: 'general' })
+      .then(data => { if (active) setItems(Array.isArray(data) ? data.slice(0, 12) : []); })
+      .catch(() => { if (active) setError(true); })
+      .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, []);
 
@@ -328,7 +329,7 @@ function NewsView() {
         <div className="panel flex flex-col items-center gap-3 px-6 py-14 text-center">
           <span className="grid h-11 w-11 place-items-center rounded-full border border-line"><Newspaper className="h-4 w-4 text-ink-dim" aria-hidden="true" /></span>
           <h2 className="text-base font-semibold text-ink">Market news needs a live data key</h2>
-          <p className="max-w-lg text-sm leading-6 text-ink-muted">Add a Finnhub API key to <code className="rounded-[5px] bg-raised px-1.5 py-0.5 font-mono text-xs text-ink">VITE_FINNHUB_API_KEY</code> to populate this desk. Stock research and demo analytics continue to work without it.</p>
+          <p className="max-w-lg text-sm leading-6 text-ink-muted">Set a Finnhub API key as <code className="rounded-[5px] bg-raised px-1.5 py-0.5 font-mono text-xs text-ink">FINNHUB_API_KEY</code> on the server to populate this desk. Stock research and demo analytics continue to work without it.</p>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

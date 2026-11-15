@@ -1,4 +1,6 @@
 // Stock data fetching utilities
+import { fetchFinnhub, isFinnhubUnavailable } from './finnhub';
+
 export interface StockDataPoint {
   date: string;
   open: number;
@@ -76,7 +78,6 @@ function generateMockData(ticker: string, days: number = 365): StockDataPoint[] 
   return data;
 }
 
-const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
 const HISTORY_CACHE_MS = 6 * 60 * 60 * 1000;
 const historyCache = new Map<string, { data: StockDataPoint[]; source: string; fetchedAt: number }>();
 const MIN_HISTORY_SESSIONS = 200;
@@ -120,13 +121,14 @@ const profileCache = new Map<string, Promise<CompanyProfile>>();
 async function fetchCompanyProfile(t: string): Promise<CompanyProfile> {
   const knownSector = KNOWN_SECTOR_MAP[t];
   const fallback: CompanyProfile = { sector: knownSector ?? 'Unknown' };
-  if (!FINNHUB_API_KEY) return fallback;
 
-  const profileUrl = `https://finnhub.io/api/v1/stock/profile2?symbol=${t}&token=${FINNHUB_API_KEY}`;
-  const profileResponse = await fetch(profileUrl);
-  if (!profileResponse.ok) throw new Error(`Finnhub profile returned HTTP ${profileResponse.status}`);
-
-  const profile = await profileResponse.json();
+  let profile: { finnhubIndustry?: unknown; industry?: unknown; sector?: unknown; shareOutstanding?: unknown };
+  try {
+    profile = await fetchFinnhub('stock/profile2', { symbol: t });
+  } catch (error) {
+    if (isFinnhubUnavailable(error)) return fallback; // no server key: demo mode, nothing to retry
+    throw error;
+  }
   const industry = profile?.finnhubIndustry || profile?.industry || profile?.sector;
   // Finnhub reports shareOutstanding in millions of shares.
   const sharesMillions = Number(profile?.shareOutstanding);
@@ -222,11 +224,13 @@ export async function getStockInfo(ticker: string): Promise<StockInfo> {
   const t = ticker.toUpperCase();
 
   try {
-    const quoteUrl = `https://finnhub.io/api/v1/quote?symbol=${t}&token=${FINNHUB_API_KEY}`;
-    const quoteResponse = await fetch(quoteUrl);
+    const quote = await fetchFinnhub<{ c?: unknown; pc?: unknown } | null>('quote', { symbol: t }).catch(error => {
+      // No server key: fall through to the demo series quietly, as before the proxy existed.
+      if (isFinnhubUnavailable(error)) return null;
+      throw error;
+    });
 
-    if (quoteResponse.ok) {
-      const quote = await quoteResponse.json();
+    if (quote) {
       const currentPrice = Number(quote.c ?? 0);
       const previousClose = Number(quote.pc ?? currentPrice);
       const profile = await getCompanyProfile(t);

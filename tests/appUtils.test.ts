@@ -6,7 +6,7 @@ import { calculatePortfolioSummary, calculateSectorAllocation, calculateSummaryR
 import { getForecastInputs } from '../src/utils/forecast.ts';
 import { isSearchShortcut, resolveSymbolSearch } from '../src/utils/symbolSearch.ts';
 import { filterStocksBySector, getAvailableSectors, shouldResetSectorFilter } from '../src/utils/sectorFilter.ts';
-import { buildCompanyNewsUrl, toCompanyNewsItems } from '../src/utils/news.ts';
+import { companyNewsParams, toCompanyNewsItems } from '../src/utils/news.ts';
 import { authRedirectUrl, describeAuthError } from '../src/utils/auth.ts';
 import { nextTabIndex } from '../src/utils/tabs.ts';
 
@@ -158,9 +158,9 @@ test('sector selection helpers', () => {
   assert.equal(shouldResetSectorFilter(undefined, 'Healthcare'), false);
 });
 
-test('company news URL covers the last seven days', () => {
-  const url = buildCompanyNewsUrl('AAPL', 'key', new Date('2026-11-13T15:00:00Z'));
-  assert.equal(url, 'https://finnhub.io/api/v1/company-news?symbol=AAPL&from=2026-11-06&to=2026-11-13&token=key');
+test('company news query covers the last seven days', () => {
+  const params = companyNewsParams('AAPL', new Date('2026-11-13T15:00:00Z'));
+  assert.deepEqual(params, { symbol: 'AAPL', from: '2026-11-06', to: '2026-11-13' });
   assert.equal(toCompanyNewsItems(Array.from({ length: 9 }, (_, i) => ({ headline: String(i) }))).length, 5);
   assert.deepEqual(toCompanyNewsItems({ error: 'nope' }), []);
 });

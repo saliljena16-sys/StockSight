@@ -80,9 +80,9 @@ const FINNHUB_API_KEY = import.meta.env.VITE_FINNHUB_API_KEY || '';
 const HISTORY_CACHE_MS = 6 * 60 * 60 * 1000;
 const historyCache = new Map<string, { data: StockDataPoint[]; source: string; fetchedAt: number }>();
 const MIN_HISTORY_SESSIONS = 200;
-// Finnhub's free tier answers /stock/candle with 401/403. Once that happens, stop asking for the
-// rest of the session and rely on the Yahoo proxy instead.
-let finnhubCandlesBlocked = false;
+// Daily history comes from Yahoo (through the /api/yahoo-finance proxy), not Finnhub: Finnhub's
+// /stock/candle answers 403 "You don't have access to this resource" on this plan, at every
+// resolution, so asking it first only added a failed request per symbol on every load.
 
 const KNOWN_SECTOR_MAP: Record<string, string> = {
   AAPL: 'Technology',
@@ -151,42 +151,6 @@ function getCompanyProfile(ticker: string): Promise<CompanyProfile> {
   return pending;
 }
 
-async function getFinnhubHistoricalData(ticker: string): Promise<StockDataPoint[]> {
-  if (!FINNHUB_API_KEY || finnhubCandlesBlocked) return [];
-  const to = Math.floor(Date.now() / 1000);
-  // 400 calendar days comfortably covers the 200 trading sessions required by SMA-200.
-  const from = to - 400 * 24 * 60 * 60;
-  const url = `https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=D&from=${from}&to=${to}&token=${FINNHUB_API_KEY}`;
-
-  try {
-    const response = await fetch(url);
-    if (response.status === 401 || response.status === 403) {
-      finnhubCandlesBlocked = true;
-      console.info(`Finnhub daily candles are not available on this API key (HTTP ${response.status}); using Yahoo Finance for history.`);
-      return [];
-    }
-    if (!response.ok) return [];
-
-    const candle = await response.json();
-    if (candle?.s !== 'ok' || !Array.isArray(candle.t)) return [];
-
-    return candle.t.map((timestamp: number, index: number) => ({
-      date: new Date(timestamp * 1000).toISOString().split('T')[0],
-      open: Number(candle.o[index]),
-      high: Number(candle.h[index]),
-      low: Number(candle.l[index]),
-      close: Number(candle.c[index]),
-      volume: Number(candle.v[index] ?? 0),
-    })).filter((point: StockDataPoint) =>
-      Number.isFinite(point.open) && Number.isFinite(point.high) &&
-      Number.isFinite(point.low) && Number.isFinite(point.close)
-    );
-  } catch (error) {
-    console.warn(`Unable to load historical prices for ${ticker}:`, error);
-    return [];
-  }
-}
-
 async function readProxyError(response: Response): Promise<string> {
   try {
     const payload = await response.json();
@@ -239,12 +203,6 @@ async function getHistoricalData(ticker: string): Promise<HistoryResult> {
   const cached = historyCache.get(ticker);
   if (cached && Date.now() - cached.fetchedAt < HISTORY_CACHE_MS) {
     return { data: cached.data, source: cached.source };
-  }
-
-  const finnhubData = await getFinnhubHistoricalData(ticker);
-  if (finnhubData.length >= MIN_HISTORY_SESSIONS) {
-    historyCache.set(ticker, { data: finnhubData, source: 'Finnhub', fetchedAt: Date.now() });
-    return { data: finnhubData, source: 'Finnhub' };
   }
 
   const yahoo = await getYahooHistoricalData(ticker);
